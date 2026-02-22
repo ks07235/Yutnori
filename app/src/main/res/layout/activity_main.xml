@@ -2,291 +2,98 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F9F7F7">
+    android:background="#F9F7F7"
+    android:id="@+id/root_layout">
+
+    <TextView
+        android:id="@+id/text_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="움직일 말을 선택하세요."
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:textColor="#112D4E"
+        android:layout_marginTop="20dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/board_container"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:background="@drawable/ic_board_lines"
-        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintDimensionRatio="1:1"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/text_status"
+        android:layout_marginTop="10dp"
         app:layout_constraintWidth_percent="0.95">
 
-        <View
-            android:id="@+id/spot0"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
-            android:background="@drawable/shape_node_large"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+        <View android:id="@+id/spot0" android:layout_width="50dp" android:layout_height="50dp" android:background="@drawable/shape_node_large" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+        <View android:id="@+id/spot5" android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/shape_node_large" app:layout_constraintTop_toTopOf="parent" app:layout_constraintEnd_toEndOf="parent" />
+        <View android:id="@+id/spot10" android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/shape_node_large" app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="parent" />
+        <View android:id="@+id/spot15" android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/shape_node_large" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintStart_toStartOf="parent" />
+        <View android:id="@+id/spot22" android:layout_width="50dp" android:layout_height="50dp" android:background="@drawable/shape_node_large" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toTopOf="parent" />
 
-        <View
-            android:id="@+id/spot5"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/shape_node_large"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <View
-            android:id="@+id/spot10"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/shape_node_large"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <View
-            android:id="@+id/spot15"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="@drawable/shape_node_large"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent" />
-
-        <View
-            android:id="@+id/spot22"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
-            android:background="@drawable/shape_node_large"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-
-        <View
-            android:id="@+id/spot1"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot0"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/spot2" />
-
-        <View
-            android:id="@+id/spot2"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot1"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/spot3" />
-
-        <View
-            android:id="@+id/spot3"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot2"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/spot4" />
-
-        <View
-            android:id="@+id/spot4"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot3"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/spot5" />
-
-        <View
-            android:id="@+id/spot6"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintEnd_toStartOf="@+id/spot5"
-            app:layout_constraintStart_toEndOf="@+id/spot7"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <View
-            android:id="@+id/spot7"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintEnd_toStartOf="@+id/spot6"
-            app:layout_constraintStart_toEndOf="@+id/spot8"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <View
-            android:id="@+id/spot8"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintEnd_toStartOf="@+id/spot7"
-            app:layout_constraintStart_toEndOf="@+id/spot9"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <View
-            android:id="@+id/spot9"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintEnd_toStartOf="@+id/spot8"
-            app:layout_constraintStart_toEndOf="@+id/spot10"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <View
-            android:id="@+id/spot11"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot12"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/spot10" />
-
-        <View
-            android:id="@+id/spot12"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot13"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/spot11" />
-
-        <View
-            android:id="@+id/spot13"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot14"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/spot12" />
-
-        <View
-            android:id="@+id/spot14"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot15"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/spot13" />
-
-        <View
-            android:id="@+id/spot16"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@+id/spot17"
-            app:layout_constraintStart_toEndOf="@+id/spot15" />
-
-        <View
-            android:id="@+id/spot17"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@+id/spot18"
-            app:layout_constraintStart_toEndOf="@+id/spot16" />
-
-        <View
-            android:id="@+id/spot18"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@+id/spot19"
-            app:layout_constraintStart_toEndOf="@+id/spot17" />
-
-        <View
-            android:id="@+id/spot19"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toStartOf="@+id/spot0"
-            app:layout_constraintStart_toEndOf="@+id/spot18" />
-
-        <View
-            android:id="@+id/spot20"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot21"
-            app:layout_constraintEnd_toStartOf="@+id/spot5"
-            app:layout_constraintStart_toEndOf="@+id/spot21"
-            app:layout_constraintTop_toBottomOf="@+id/spot5" />
-
-        <View
-            android:id="@+id/spot21"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot22"
-            app:layout_constraintEnd_toStartOf="@+id/spot20"
-            app:layout_constraintStart_toEndOf="@+id/spot22"
-            app:layout_constraintTop_toBottomOf="@+id/spot20" />
-
-        <View
-            android:id="@+id/spot23"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot24"
-            app:layout_constraintEnd_toStartOf="@+id/spot22"
-            app:layout_constraintStart_toEndOf="@+id/spot24"
-            app:layout_constraintTop_toBottomOf="@+id/spot22" />
-
-        <View
-            android:id="@+id/spot24"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot15"
-            app:layout_constraintEnd_toStartOf="@+id/spot23"
-            app:layout_constraintStart_toEndOf="@+id/spot15"
-            app:layout_constraintTop_toBottomOf="@+id/spot23" />
-
-        <View
-            android:id="@+id/spot25"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot26"
-            app:layout_constraintEnd_toStartOf="@+id/spot26"
-            app:layout_constraintStart_toEndOf="@+id/spot10"
-            app:layout_constraintTop_toBottomOf="@+id/spot10" />
-
-        <View
-            android:id="@+id/spot26"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot22"
-            app:layout_constraintEnd_toStartOf="@+id/spot22"
-            app:layout_constraintStart_toEndOf="@+id/spot25"
-            app:layout_constraintTop_toBottomOf="@+id/spot25" />
-
-        <View
-            android:id="@+id/spot27"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot28"
-            app:layout_constraintEnd_toStartOf="@+id/spot28"
-            app:layout_constraintStart_toEndOf="@+id/spot22"
-            app:layout_constraintTop_toBottomOf="@+id/spot22" />
-
-        <View
-            android:id="@+id/spot28"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/shape_node_small"
-            app:layout_constraintBottom_toTopOf="@+id/spot0"
-            app:layout_constraintEnd_toStartOf="@+id/spot0"
-            app:layout_constraintStart_toEndOf="@+id/spot27"
-            app:layout_constraintTop_toBottomOf="@+id/spot27" />
-
+        <View android:id="@+id/spot1" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot0" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toBottomOf="@+id/spot2" />
+        <View android:id="@+id/spot2" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot1" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toBottomOf="@+id/spot3" />
+        <View android:id="@+id/spot3" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot2" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toBottomOf="@+id/spot4" />
+        <View android:id="@+id/spot4" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot3" app:layout_constraintEnd_toEndOf="parent" app:layout_constraintTop_toBottomOf="@+id/spot5" />
+        <View android:id="@+id/spot6" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintEnd_toStartOf="@+id/spot5" app:layout_constraintStart_toEndOf="@+id/spot7" app:layout_constraintTop_toTopOf="parent" />
+        <View android:id="@+id/spot7" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintEnd_toStartOf="@+id/spot6" app:layout_constraintStart_toEndOf="@+id/spot8" app:layout_constraintTop_toTopOf="parent" />
+        <View android:id="@+id/spot8" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintEnd_toStartOf="@+id/spot7" app:layout_constraintStart_toEndOf="@+id/spot9" app:layout_constraintTop_toTopOf="parent" />
+        <View android:id="@+id/spot9" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintEnd_toStartOf="@+id/spot8" app:layout_constraintStart_toEndOf="@+id/spot10" app:layout_constraintTop_toTopOf="parent" />
+        <View android:id="@+id/spot11" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot12" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@+id/spot10" />
+        <View android:id="@+id/spot12" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot13" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@+id/spot11" />
+        <View android:id="@+id/spot13" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot14" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@+id/spot12" />
+        <View android:id="@+id/spot14" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot15" app:layout_constraintStart_toStartOf="parent" app:layout_constraintTop_toBottomOf="@+id/spot13" />
+        <View android:id="@+id/spot16" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@+id/spot17" app:layout_constraintStart_toEndOf="@+id/spot15" />
+        <View android:id="@+id/spot17" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@+id/spot18" app:layout_constraintStart_toEndOf="@+id/spot16" />
+        <View android:id="@+id/spot18" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@+id/spot19" app:layout_constraintStart_toEndOf="@+id/spot17" />
+        <View android:id="@+id/spot19" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toBottomOf="parent" app:layout_constraintEnd_toStartOf="@+id/spot0" app:layout_constraintStart_toEndOf="@+id/spot18" />
+        <View android:id="@+id/spot20" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot21" app:layout_constraintEnd_toStartOf="@+id/spot5" app:layout_constraintStart_toEndOf="@+id/spot21" app:layout_constraintTop_toBottomOf="@+id/spot5" />
+        <View android:id="@+id/spot21" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot22" app:layout_constraintEnd_toStartOf="@+id/spot20" app:layout_constraintStart_toEndOf="@+id/spot22" app:layout_constraintTop_toBottomOf="@+id/spot20" />
+        <View android:id="@+id/spot23" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot24" app:layout_constraintEnd_toStartOf="@+id/spot22" app:layout_constraintStart_toEndOf="@+id/spot24" app:layout_constraintTop_toBottomOf="@+id/spot22" />
+        <View android:id="@+id/spot24" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot15" app:layout_constraintEnd_toStartOf="@+id/spot23" app:layout_constraintStart_toEndOf="@+id/spot15" app:layout_constraintTop_toBottomOf="@+id/spot23" />
+        <View android:id="@+id/spot25" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot26" app:layout_constraintEnd_toStartOf="@+id/spot26" app:layout_constraintStart_toEndOf="@+id/spot10" app:layout_constraintTop_toBottomOf="@+id/spot10" />
+        <View android:id="@+id/spot26" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot22" app:layout_constraintEnd_toStartOf="@+id/spot22" app:layout_constraintStart_toEndOf="@+id/spot25" app:layout_constraintTop_toBottomOf="@+id/spot25" />
+        <View android:id="@+id/spot27" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot28" app:layout_constraintEnd_toStartOf="@+id/spot28" app:layout_constraintStart_toEndOf="@+id/spot22" app:layout_constraintTop_toBottomOf="@+id/spot22" />
+        <View android:id="@+id/spot28" android:layout_width="30dp" android:layout_height="30dp" android:background="@drawable/shape_node_small" app:layout_constraintBottom_toTopOf="@+id/spot0" app:layout_constraintEnd_toStartOf="@+id/spot0" app:layout_constraintStart_toEndOf="@+id/spot27" app:layout_constraintTop_toBottomOf="@+id/spot27" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <TextView android:id="@+id/text_start" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="start" android:textColor="#112D4E" android:textStyle="bold" app:layout_constraintStart_toStartOf="@+id/board_container" app:layout_constraintTop_toBottomOf="@+id/board_container" android:layout_marginTop="8dp" android:layout_marginStart="20dp"/>
+    <LinearLayout
+        android:id="@+id/waiting_area"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintTop_toBottomOf="@id/board_container"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="20dp">
+
+        <FrameLayout android:id="@+id/wait_spot_0" android:layout_width="50dp" android:layout_height="50dp" android:layout_margin="5dp"/>
+        <FrameLayout android:id="@+id/wait_spot_1" android:layout_width="50dp" android:layout_height="50dp" android:layout_margin="5dp"/>
+        <FrameLayout android:id="@+id/wait_spot_2" android:layout_width="50dp" android:layout_height="50dp" android:layout_margin="5dp"/>
+        <FrameLayout android:id="@+id/wait_spot_3" android:layout_width="50dp" android:layout_height="50dp" android:layout_margin="5dp"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginBottom="20dp"
+        android:weightSum="6">
+
+        <Button android:id="@+id/btn_bdo" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="빽도"/>
+        <Button android:id="@+id/btn_do" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="도"/>
+        <Button android:id="@+id/btn_gae" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="개"/>
+        <Button android:id="@+id/btn_geol" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="걸"/>
+        <Button android:id="@+id/btn_yut" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="윷"/>
+        <Button android:id="@+id/btn_mo" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="모"/>
+    </LinearLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>
