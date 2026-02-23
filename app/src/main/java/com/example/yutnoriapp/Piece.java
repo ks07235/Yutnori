@@ -1,12 +1,14 @@
 package com.example.yutnoriapp;
 
 public class Piece {
+    public int teamId; // 팀 구분 변수
     public int id;
     public int position;
     public boolean isFinished;
     public int route; //  어느 지름길을 탔는지. 빽도 때문에 추가 (0: 외곽 경로, 1: 우상단 꺾임, 2: 좌상단 꺾임)
 
-    public Piece(int id) {
+    public Piece(int teamId, int id) {
+        this.teamId = teamId;
         this.id = id;
         this.position = -1;
         this.isFinished = false;
