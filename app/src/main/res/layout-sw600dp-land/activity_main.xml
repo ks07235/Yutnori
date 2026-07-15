@@ -1,0 +1,394 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_main"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:padding="14dp">
+
+    <LinearLayout
+        android:id="@+id/top_panel"
+        android:layout_width="280dp"
+        android:layout_height="0dp"
+        android:background="@drawable/shape_panel"
+        android:elevation="2dp"
+        android:orientation="vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="13dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/text_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:includeFontPadding="false"
+                android:text="@string/app_name"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/btn_settings"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="@drawable/shape_icon_button"
+                android:contentDescription="@string/settings"
+                android:padding="8dp"
+                android:src="@drawable/ic_settings" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/text_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/shape_status_pill"
+            android:ellipsize="end"
+            android:gravity="center_vertical"
+            android:maxLines="4"
+            android:minHeight="52dp"
+            android:paddingHorizontal="9dp"
+            android:paddingVertical="7dp"
+            android:text="1&#xD300; &#xCC28;&#xB840;&#xC785;&#xB2C8;&#xB2E4;. &#xC737; &#xACB0;&#xACFC;&#xB97C; &#xC785;&#xB825;&#xD558;&#xC138;&#xC694;."
+            android:textColor="@color/text_status"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/layout_finished_summary"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="10dp"
+            android:layout_weight="1"
+            android:baselineAligned="false"
+            android:gravity="top"
+            android:orientation="vertical" />
+
+        <Button
+            android:id="@+id/btn_restart"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:background="@drawable/shape_button_restart"
+            android:backgroundTint="@null"
+            android:minWidth="0dp"
+            android:paddingHorizontal="12dp"
+            android:text="&#xC0C8; &#xAC8C;&#xC784;"
+            android:textAllCaps="false"
+            android:textColor="@color/btn_text_color"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <com.example.yutnoriapp.SquareFrameLayout
+        android:id="@+id/board_container"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/shape_board_shell"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:elevation="3dp"
+        android:layout_marginHorizontal="16dp"
+        android:padding="14dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintDimensionRatio="1:1"
+        app:layout_constraintEnd_toStartOf="@id/control_panel"
+        app:layout_constraintHeight_max="860dp"
+        app:layout_constraintStart_toEndOf="@id/top_panel"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.5">
+
+        <com.example.yutnoriapp.YutBoardView
+            android:id="@+id/board_art"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </com.example.yutnoriapp.SquareFrameLayout>
+
+    <LinearLayout
+        android:id="@+id/action_log_rail"
+        android:layout_width="42dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/shape_action_log_rail"
+        android:elevation="8dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingVertical="4dp"
+        app:layout_constraintEnd_toEndOf="@id/board_container"
+        app:layout_constraintTop_toTopOf="@id/board_container" />
+
+    <ScrollView
+        android:id="@+id/control_panel"
+        android:layout_width="340dp"
+        android:layout_height="0dp"
+        android:background="@drawable/shape_control_panel"
+        android:elevation="2dp"
+        android:fillViewport="true"
+        android:overScrollMode="never"
+        android:paddingHorizontal="13dp"
+        android:paddingTop="13dp"
+        android:paddingBottom="13dp"
+        android:scrollbars="none"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/waiting_area"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="false"
+                android:gravity="center"
+                android:orientation="vertical" />
+
+            <LinearLayout
+                android:id="@+id/turn_tools"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:layout_marginTop="7dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/text_timer"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/shape_status_pill"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="03:00"
+                    android:textColor="@color/text_primary"
+                    android:textSize="19sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btn_time_stop"
+                    style="@style/UtilityActionButton"
+                    android:layout_width="76dp"
+                    android:layout_height="34dp"
+                    android:layout_marginStart="7dp"
+                    android:background="@drawable/shape_button_utility"
+                    android:backgroundTint="@null"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="4dp"
+                    android:text="&#xC2DC;&#xAC04; &#xC815;&#xC9C0;"
+                    android:textAllCaps="false"
+                    android:textColor="@color/button_text_dark"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btn_end_turn"
+                style="@style/PrimaryActionButton"
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:layout_marginTop="7dp"
+                android:background="@drawable/shape_button_end_turn"
+                android:backgroundTint="@null"
+                android:minWidth="0dp"
+                android:paddingHorizontal="8dp"
+                android:text="&#xD134; &#xC885;&#xB8CC;"
+                android:textAllCaps="false"
+                android:textColor="@color/button_text_light"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="38dp"
+                android:layout_marginTop="7dp"
+                android:fillViewport="true"
+                android:overScrollMode="never"
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:id="@+id/layout_results"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal" />
+            </HorizontalScrollView>
+
+            <Button
+                android:id="@+id/btn_undo_roll"
+                style="@style/UtilityActionButton"
+                android:layout_width="match_parent"
+                android:layout_height="36dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/shape_button_utility"
+                android:backgroundTint="@null"
+                android:minWidth="0dp"
+                android:paddingHorizontal="8dp"
+                android:text="&#xB9C8;&#xC9C0;&#xB9C9; &#xCDE8;&#xC18C;"
+                android:textAllCaps="false"
+                android:textColor="@color/button_text_dark"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="vertical">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/btn_bdo"
+                        style="@style/YutInputButton"
+                        android:drawableTop="@drawable/ic_yut_backdo"
+                        android:drawablePadding="4dp"
+                        android:text="&#xBE7D;&#xB3C4;" />
+
+                    <TextView
+                        android:id="@+id/btn_do"
+                        style="@style/YutInputButton"
+                        android:drawableTop="@drawable/ic_yut_do"
+                        android:drawablePadding="4dp"
+                        android:text="&#xB3C4;" />
+
+                    <TextView
+                        android:id="@+id/btn_gae"
+                        style="@style/YutInputButton"
+                        android:drawableTop="@drawable/ic_yut_gae"
+                        android:drawablePadding="4dp"
+                        android:text="&#xAC1C;" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="6dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/btn_geol"
+                        style="@style/YutInputButton"
+                        android:drawableTop="@drawable/ic_yut_geol"
+                        android:drawablePadding="4dp"
+                        android:text="&#xAC78;" />
+
+                    <TextView
+                        android:id="@+id/btn_yut"
+                        style="@style/YutInputButton"
+                        android:background="@drawable/shape_button_yut_bonus"
+                        android:drawableTop="@drawable/ic_yut_yut"
+                        android:drawablePadding="4dp"
+                        android:text="&#xC737;" />
+
+                    <TextView
+                        android:id="@+id/btn_mo"
+                        style="@style/YutInputButton"
+                        android:background="@drawable/shape_button_yut_bonus"
+                        android:drawableTop="@drawable/ic_yut_mo"
+                        android:drawablePadding="4dp"
+                        android:text="&#xBAA8;" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <FrameLayout
+        android:id="@+id/setup_panel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@color/bg_main"
+        android:clickable="true"
+        android:elevation="24dp"
+        android:focusable="true"
+        android:padding="22dp"
+        android:visibility="visible"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="460dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/shape_panel"
+            android:elevation="6dp"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="44dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:text="&#xD300; &#xC120;&#xD0DD;"
+                    android:textColor="@color/text_primary"
+                    android:textSize="27sp"
+                    android:textStyle="bold" />
+
+                <ImageButton
+                    android:id="@+id/btn_setup_settings"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="end|center_vertical"
+                    android:background="@drawable/shape_icon_button"
+                    android:contentDescription="@string/settings"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_settings" />
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="9dp"
+                android:gravity="center"
+                android:text="&#xC624;&#xB298; &#xC737;&#xD310;&#xC5D0; &#xC62C;&#xB77C;&#xAC08; &#xD300;&#xC744; &#xACE0;&#xB974;&#xC138;&#xC694;."
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/btn_team_2"
+                style="@style/TeamSetupButton"
+                android:layout_marginTop="20dp"
+                android:backgroundTint="@null"
+                android:text="2&#xD300;&#xC73C;&#xB85C; &#xC2DC;&#xC791;" />
+
+            <Button
+                android:id="@+id/btn_team_3"
+                style="@style/TeamSetupButton"
+                android:layout_marginTop="9dp"
+                android:backgroundTint="@null"
+                android:text="3&#xD300;&#xC73C;&#xB85C; &#xC2DC;&#xC791;" />
+
+            <Button
+                android:id="@+id/btn_team_4"
+                style="@style/TeamSetupButton"
+                android:layout_marginTop="9dp"
+                android:backgroundTint="@null"
+                android:text="4&#xD300;&#xC73C;&#xB85C; &#xC2DC;&#xC791;" />
+        </LinearLayout>
+    </FrameLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,3 +1,9 @@
 <resources>
-    <string name="app_name">YutnoriApp</string>
+    <string name="app_name">Yutnori</string>
+    <string name="settings">설정</string>
+    <string name="new_game_title">새 게임 시작</string>
+    <string name="new_game_message">현재 게임 기록과 말의 위치를 모두 초기화하고 새 게임을 시작할까요?</string>
+    <string name="new_game_confirm_countdown">네 (%1$d초)</string>
+    <string name="new_game_confirm_ready">네, 새 게임</string>
+    <string name="no">아니요</string>
 </resources>

@@ -9,6 +9,11 @@
 /.idea/assetWizardSettings.xml
 .DS_Store
 /build
+/dist/
+/store-assets/
+*.jks
+*.keystore
+/keystore.properties
 /captures
 .externalNativeBuild
 .cxx

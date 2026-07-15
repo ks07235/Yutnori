@@ -1,5 +1,14 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
+}
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use(::load)
+    }
 }
 
 android {
@@ -11,18 +20,33 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.yutnoriapp"
+        applicationId = "com.das312.yutnori"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 34
+        versionName = "0.16.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = rootProject.file(requireNotNull(keystoreProperties.getProperty("storeFile")))
+                storePassword = requireNotNull(keystoreProperties.getProperty("storePassword"))
+                keyAlias = requireNotNull(keystoreProperties.getProperty("keyAlias"))
+                keyPassword = requireNotNull(keystoreProperties.getProperty("keyPassword"))
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
