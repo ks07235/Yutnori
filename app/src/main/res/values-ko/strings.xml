@@ -179,4 +179,30 @@
         <item>오른쪽 위 지름길 안쪽 칸</item>
         <item>오른쪽 위 지름길 바깥 칸</item>
     </string-array>
+    <string name="piece_setup_title">팀별 말 꾸미기</string>
+    <string name="piece_setup_hint">팀을 누른 뒤 색과 모양을 골라 주세요. 추천 조합에는 개나리색이 포함되어 있어요. 팀마다 다른 색을 선택해 주세요.</string>
+    <string name="piece_setup_shape">말 모양</string>
+    <string name="piece_setup_start">게임 시작</string>
+    <string name="piece_setup_recommended">추천 조합</string>
+    <string name="piece_setup_back">돌아가기</string>
+    <string name="piece_setup_team">%1$d팀</string>
+    <string name="piece_setup_editing">%1$d팀 · 색 고르기</string>
+    <string name="piece_setup_team_description">%1$s, %2$s, %3$s</string>
+    <string name="piece_setup_color_used">%1$s은(는) %2$d팀이 사용 중이에요.</string>
+    <string name="piece_color_red">빨강</string>
+    <string name="piece_color_blue">파랑</string>
+    <string name="piece_color_purple">보라</string>
+    <string name="piece_color_green">초록</string>
+    <string name="piece_color_forsythia">개나리</string>
+    <string name="piece_color_white">흰색</string>
+    <string name="piece_color_black">검정</string>
+    <string name="piece_color_orange">주황</string>
+    <string name="piece_color_pink">분홍</string>
+    <string name="piece_color_teal">청록</string>
+    <string name="piece_shape_circle">원</string>
+    <string name="piece_shape_square">둥근 사각형</string>
+    <string name="piece_shape_diamond">마름모</string>
+    <string name="piece_shape_triangle">삼각형</string>
+    <string name="piece_shape_star">별</string>
+    <string name="piece_shape_hexagon">육각형</string>
 </resources>

@@ -35,6 +35,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AlertDialog;
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.core.graphics.Insets;
@@ -131,6 +132,12 @@ public class MainActivity extends AppCompatActivity {
     private long lastUpdateCheckElapsedMillis = Long.MIN_VALUE;
     private long restoredGameSavedAtEpochMillis = 0L;
     private GameStateStore.MoveUndoState moveUndoState;
+    private int[] teamColors = TeamAppearance.legacyColors();
+    private int[] teamShapes = TeamAppearance.legacyShapes();
+    private AlertDialog teamAppearanceDialog;
+    private int pendingTeamCount;
+    private int[] draftTeamColors;
+    private int[] draftTeamShapes;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -148,6 +155,14 @@ public class MainActivity extends AppCompatActivity {
             restoreGameScreen(restoredStatusMessage, restoredStatusColor);
         } else {
             showTeamSetup();
+            if (savedInstanceState != null) {
+                int count = savedInstanceState.getInt("appearance_team_count", 0);
+                if (count >= 2 && count <= YutGameEngine.MAX_TEAM_COUNT) {
+                    showTeamAppearanceSetup(count,
+                            TeamAppearance.restoreColors(savedInstanceState.getIntArray("appearance_colors"), count),
+                            TeamAppearance.restoreShapes(savedInstanceState.getIntArray("appearance_shapes")));
+                }
+            }
         }
         savedGameChoicePending = restoredGame && GameStateStore.shouldConfirmSavedGame(
                 restoredGameSavedAtEpochMillis,
@@ -240,6 +255,11 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
+        if (teamAppearanceDialog != null && teamAppearanceDialog.isShowing()) {
+            outState.putInt("appearance_team_count", pendingTeamCount);
+            outState.putIntArray("appearance_colors", draftTeamColors.clone());
+            outState.putIntArray("appearance_shapes", draftTeamShapes.clone());
+        }
         persistGameState();
         super.onSaveInstanceState(outState);
     }
@@ -282,6 +302,11 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         isActivityResumed = false;
+        if (teamAppearanceDialog != null) {
+            teamAppearanceDialog.setOnDismissListener(null);
+            teamAppearanceDialog.dismiss();
+            teamAppearanceDialog = null;
+        }
         cancelMovePresentation(false);
         timerHandler.removeCallbacks(timerTick);
         timerHandler.removeCallbacks(updateCheckRunnable);
@@ -295,7 +320,7 @@ public class MainActivity extends AppCompatActivity {
         for (int team = 0; team < YutGameEngine.TEAM_COUNT; team++) {
             for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
                 PieceStackView view = new PieceStackView(this);
-                view.configure(getResources().getColor(getTeamBrightColorRes(team)), getTeamColor(team), id + 1);
+                view.configureAppearance(teamColors[team], teamShapes[team], id + 1);
                 view.setElevation(dp(7));
                 view.setContentDescription(getString(R.string.piece_description, teamName(team), id + 1));
 
@@ -331,9 +356,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindTeamSetupButtons() {
-        bindPressAction(R.id.btn_team_2, () -> startGame(2));
-        bindPressAction(R.id.btn_team_3, () -> startGame(3));
-        bindPressAction(R.id.btn_team_4, () -> startGame(4));
+        bindPressAction(R.id.btn_team_2, () -> showTeamAppearanceSetup(2));
+        bindPressAction(R.id.btn_team_3, () -> showTeamAppearanceSetup(3));
+        bindPressAction(R.id.btn_team_4, () -> showTeamAppearanceSetup(4));
         configureTeamSetupButton(R.id.btn_team_2, R.string.team_two_detail, R.drawable.ic_teams_2);
         configureTeamSetupButton(R.id.btn_team_3, R.string.team_three_detail, R.drawable.ic_teams_3);
         configureTeamSetupButton(R.id.btn_team_4, R.string.team_four_detail, R.drawable.ic_teams_4);
@@ -580,6 +605,38 @@ public class MainActivity extends AppCompatActivity {
 
     boolean isSavedGameChoiceVisible() {
         return savedGameChoiceVisible;
+    }
+
+    private void showTeamAppearanceSetup(int teamCount) {
+        showTeamAppearanceSetup(teamCount, TeamAppearance.recommendedColors(), TeamAppearance.recommendedShapes());
+    }
+
+    private void showTeamAppearanceSetup(int teamCount, int[] colors, int[] shapes) {
+        if (teamAppearanceDialog != null) return;
+        pendingTeamCount = teamCount;
+        draftTeamColors = colors;
+        draftTeamShapes = shapes;
+        beginTimerDialogHold();
+        teamAppearanceDialog = TeamAppearanceDialog.show(this, teamCount, colors, shapes,
+                (selectedColors, selectedShapes) -> {
+                    teamColors = selectedColors;
+                    teamShapes = selectedShapes;
+                    applyTeamAppearance();
+                    startGame(teamCount);
+                },
+                () -> {
+                    teamAppearanceDialog = null;
+                    pendingTeamCount = 0;
+                    endTimerDialogHold();
+                });
+    }
+
+    private void applyTeamAppearance() {
+        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
+            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
+                pieceViews[team][id].configureAppearance(teamColors[team], teamShapes[team], id + 1);
+            }
+        }
     }
 
     private void startGame(int teamCount) {
@@ -2023,19 +2080,6 @@ public class MainActivity extends AppCompatActivity {
         newParent.addView(view);
     }
 
-    private GradientDrawable createPieceDrawable(int teamId) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.OVAL);
-        drawable.setColors(new int[]{
-                getResources().getColor(getTeamBrightColorRes(teamId)),
-                getResources().getColor(getTeamColorRes(teamId))
-        });
-        drawable.setGradientType(GradientDrawable.RADIAL_GRADIENT);
-        drawable.setGradientRadius(dp(34));
-        drawable.setStroke(dp(2), Color.WHITE);
-        return drawable;
-    }
-
     private GradientDrawable createPreviewDrawable() {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setShape(GradientDrawable.OVAL);
@@ -2083,41 +2127,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private int getStatusColor() {
-        return getResources().getColor(getTeamColorRes(game.getCurrentTeam()));
+        return getTeamColor(game.getCurrentTeam());
     }
 
     private int getTeamColor(int teamId) {
-        return getResources().getColor(getTeamColorRes(teamId));
-    }
-
-    private int getTeamColorRes(int teamId) {
-        switch (teamId) {
-            case 0:
-                return R.color.team1_dark;
-            case 1:
-                return R.color.team2_dark;
-            case 2:
-                return R.color.team3_dark;
-            case 3:
-                return R.color.team4_dark;
-            default:
-                return R.color.text_primary;
-        }
-    }
-
-    private int getTeamBrightColorRes(int teamId) {
-        switch (teamId) {
-            case 0:
-                return R.color.team1_bright;
-            case 1:
-                return R.color.team2_bright;
-            case 2:
-                return R.color.team3_dark;
-            case 3:
-                return R.color.team4_dark;
-            default:
-                return R.color.text_primary;
-        }
+        return TeamAppearance.label(teamColors[teamId]);
     }
 
     private boolean hasEdgePanels() {
@@ -3178,6 +3192,9 @@ public class MainActivity extends AppCompatActivity {
         gameStarted = appState.gameStarted;
         restoredGameSavedAtEpochMillis = appState.savedAtEpochMillis;
         game.restoreState(appState.engineState);
+        teamColors = TeamAppearance.restoreColors(appState.teamColors, game.getTeamCount());
+        teamShapes = TeamAppearance.restoreShapes(appState.teamShapes);
+        applyTeamAppearance();
         remainingTurnMillis = turnDurationMillis <= 0L ? 0L : Math.max(0L, appState.remainingTurnMillis);
         isTimerPaused = appState.timerPaused;
         timeExpiredNotified = appState.timeExpiredNotified;
@@ -3236,6 +3253,8 @@ public class MainActivity extends AppCompatActivity {
         appState.turnLog = getTurnLogSnapshot();
         appState.languageTag = currentLanguageTag();
         appState.engineState = game.saveState();
+        appState.teamColors = teamColors.clone();
+        appState.teamShapes = teamShapes.clone();
         appState.moveUndoState = moveUndoState;
         stateStore.save(settings, appState);
     }

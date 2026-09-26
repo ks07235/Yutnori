@@ -30,7 +30,7 @@ public class RotationStabilityTest {
 
     private ActivityScenario<MainActivity> start() {
         ActivityScenario<MainActivity> s = ActivityScenario.launch(MainActivity.class);
-        s.onActivity(a -> a.findViewById(R.id.btn_team_2).performClick());
+        s.onActivity(a -> TeamAppearanceInstrumentedTest.startRecommendedGame(a));
         SystemClock.sleep(500);
         return s;
     }

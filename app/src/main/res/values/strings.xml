@@ -180,4 +180,30 @@
         <item>Upper-right shortcut, inner</item>
         <item>Upper-right shortcut, outer</item>
     </string-array>
+    <string name="piece_setup_title">Choose team pieces</string>
+    <string name="piece_setup_hint">Choose a team, then its color and shape. The recommended set includes forsythia yellow. Each team needs a different color.</string>
+    <string name="piece_setup_shape">Piece shape</string>
+    <string name="piece_setup_start">Start game</string>
+    <string name="piece_setup_recommended">Recommended</string>
+    <string name="piece_setup_back">Back</string>
+    <string name="piece_setup_team">Team %1$d</string>
+    <string name="piece_setup_editing">Team %1$d · Choose a color</string>
+    <string name="piece_setup_team_description">%1$s, %2$s, %3$s</string>
+    <string name="piece_setup_color_used">%1$s is used by Team %2$d.</string>
+    <string name="piece_color_red">Red</string>
+    <string name="piece_color_blue">Blue</string>
+    <string name="piece_color_purple">Purple</string>
+    <string name="piece_color_green">Green</string>
+    <string name="piece_color_forsythia">Forsythia</string>
+    <string name="piece_color_white">White</string>
+    <string name="piece_color_black">Black</string>
+    <string name="piece_color_orange">Orange</string>
+    <string name="piece_color_pink">Pink</string>
+    <string name="piece_color_teal">Teal</string>
+    <string name="piece_shape_circle">Circle</string>
+    <string name="piece_shape_square">Rounded square</string>
+    <string name="piece_shape_diamond">Diamond</string>
+    <string name="piece_shape_triangle">Triangle</string>
+    <string name="piece_shape_star">Star</string>
+    <string name="piece_shape_hexagon">Hexagon</string>
 </resources>

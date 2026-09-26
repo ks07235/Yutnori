@@ -86,6 +86,8 @@ final class GameStateStore {
         appState.statusColor = prefs.getInt(KEY_STATUS_COLOR, defaultStatusColor);
         appState.turnLog = parseStrings(prefs.getString(KEY_TURN_LOG, ""));
         appState.languageTag = prefs.getString(KEY_LANGUAGE_TAG, "");
+        appState.teamColors = parseInts(prefs.getString("team_appearance_colors", ""));
+        appState.teamShapes = parseInts(prefs.getString("team_appearance_shapes", ""));
 
         YutGameEngine.SavedState engineState = new YutGameEngine.SavedState();
         engineState.teamCount = prefs.getInt(KEY_ENGINE_TEAM_COUNT, YutGameEngine.MIN_TEAM_COUNT);
@@ -130,6 +132,8 @@ final class GameStateStore {
         editor.putInt(KEY_STATUS_COLOR, appState.statusColor);
         editor.putString(KEY_TURN_LOG, joinStrings(appState.turnLog));
         editor.putString(KEY_LANGUAGE_TAG, appState.languageTag);
+        editor.putString("team_appearance_colors", joinInts(appState.teamColors));
+        editor.putString("team_appearance_shapes", joinInts(appState.teamShapes));
 
         YutGameEngine.SavedState state = appState.engineState;
         editor.putInt(KEY_ENGINE_TEAM_COUNT, state.teamCount);
@@ -355,6 +359,8 @@ final class GameStateStore {
         int statusColor;
         String[] turnLog = new String[0];
         String languageTag = "";
+        int[] teamColors = TeamAppearance.legacyColors();
+        int[] teamShapes = TeamAppearance.legacyShapes();
         YutGameEngine.SavedState engineState;
         MoveUndoState moveUndoState;
     }

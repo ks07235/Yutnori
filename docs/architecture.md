@@ -11,6 +11,9 @@
 
 - `MainActivity.java`: 화면 생명주기, 입력 연결, 타이머, 말 배치와 애니메이션을 조정한다.
 - `YutDialogs.java`: 설정, 전체 기록, 게임 종료 다이얼로그를 만든다.
+- `TeamAppearanceDialog.java`: 팀 수 선택 후 팀별 말 색과 모양을 고르는 팝업을 만든다. 게임 시작을 누르기 전까지는 초안만 변경한다.
+- `TeamAppearance.java`: 저장 가능한 색·모양 ID, 추천 조합, 이전 저장 데이터 복원과 중복 색 검증을 담당한다.
+- `PieceStackView.java`: 선택한 색과 모양으로 단독 말과 업힌 말을 함께 그린다. 밝은 말에는 어두운 숫자와 테두리를 사용한다.
 - `YutBoardView.java`: 윷판을 그린다.
 - `SquareFrameLayout.java`: 화면 비율과 무관하게 윷판을 정사각형으로 유지한다.
 - `BoardGeometry.java`: 노드 좌표를 한 곳에서 관리한다.

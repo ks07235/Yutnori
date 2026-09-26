@@ -5,6 +5,8 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
 import android.graphics.RadialGradient;
 import android.graphics.Shader;
 import android.graphics.Typeface;
@@ -16,6 +18,10 @@ public final class PieceStackView extends View {
     private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix gradientMatrix = new Matrix();
+    private final Path shapePath = new Path();
+    private final RectF shapeBounds = new RectF();
+    private final Paint haloPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private int shape = TeamAppearance.CIRCLE;
 
     private int brightColor = Color.WHITE;
     private int darkColor = Color.DKGRAY;
@@ -40,6 +46,11 @@ public final class PieceStackView extends View {
         strokePaint.setStyle(Paint.Style.STROKE);
         strokePaint.setColor(Color.WHITE);
         strokePaint.setStrokeWidth(dp(1.5f));
+        haloPaint.setStyle(Paint.Style.STROKE);
+        haloPaint.setColor(Color.WHITE);
+        haloPaint.setStrokeWidth(dp(3f));
+        strokePaint.setStrokeJoin(Paint.Join.ROUND);
+        haloPaint.setStrokeJoin(Paint.Join.ROUND);
 
         textPaint.setColor(Color.WHITE);
         textPaint.setTextAlign(Paint.Align.CENTER);
@@ -53,6 +64,13 @@ public final class PieceStackView extends View {
         pieceLabel = String.valueOf(pieceNumber);
         rebuildGradient();
         invalidate();
+    }
+
+    void configureAppearance(int colorId, int shape, int pieceNumber) {
+        this.shape = TeamAppearance.isShape(shape) ? shape : TeamAppearance.CIRCLE;
+        textPaint.setColor(TeamAppearance.ink(colorId));
+        strokePaint.setColor(TeamAppearance.outline(colorId));
+        configure(TeamAppearance.highlight(colorId), TeamAppearance.fill(colorId), pieceNumber);
     }
 
     void setGroupCount(int groupCount) {
@@ -111,15 +129,42 @@ public final class PieceStackView extends View {
             gradientMatrix.postTranslate(centerX, centerY);
             fillGradient.setLocalMatrix(gradientMatrix);
             fillPaint.setShader(fillGradient);
-            canvas.drawCircle(centerX, centerY, radius, fillPaint);
-            canvas.drawCircle(centerX, centerY, radius, strokePaint);
+            buildShape(centerX, centerY, Math.max(0f, radius - dp(1.5f)));
+            canvas.drawPath(shapePath, fillPaint);
+            canvas.drawPath(shapePath, haloPaint);
+            canvas.drawPath(shapePath, strokePaint);
         }
 
         if (groupCount == 1) {
-            textPaint.setTextSize(diameter * 0.40f);
+            textPaint.setTextSize(diameter * (shape == TeamAppearance.STAR ? 0.30f : 0.36f));
             Paint.FontMetrics metrics = textPaint.getFontMetrics();
             float baseline = (getHeight() / 2f) - ((metrics.ascent + metrics.descent) / 2f);
             canvas.drawText(pieceLabel, getWidth() / 2f, baseline, textPaint);
+        }
+    }
+
+    private void buildShape(float x, float y, float radius) {
+        shapePath.reset();
+        if (shape == TeamAppearance.CIRCLE) {
+            shapePath.addCircle(x, y, radius, Path.Direction.CW);
+        } else if (shape == TeamAppearance.ROUNDED_SQUARE) {
+            float half = radius * 0.84f;
+            shapeBounds.set(x - half, y - half, x + half, y + half);
+            shapePath.addRoundRect(shapeBounds, radius * 0.28f, radius * 0.28f, Path.Direction.CW);
+        } else {
+            int vertices = shape == TeamAppearance.TRIANGLE ? 3
+                    : shape == TeamAppearance.DIAMOND ? 4
+                    : shape == TeamAppearance.STAR ? 10 : 6;
+            for (int i = 0; i < vertices; i++) {
+                double angle = -Math.PI / 2 + i * Math.PI * 2 / vertices;
+                float r = shape == TeamAppearance.STAR && i % 2 == 1 ? radius * 0.52f : radius;
+                float px = x + (float) Math.cos(angle) * r;
+                // Shift the triangle slightly upward to center its numeral within the silhouette.
+                float py = y + (float) Math.sin(angle) * r
+                        + (shape == TeamAppearance.TRIANGLE ? radius * 0.15f : 0f);
+                if (i == 0) shapePath.moveTo(px, py); else shapePath.lineTo(px, py);
+            }
+            shapePath.close();
         }
     }
 

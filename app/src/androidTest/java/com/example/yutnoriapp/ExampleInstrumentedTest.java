@@ -118,7 +118,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void selectingTwoTeamsBuildsOnlyTwoTeamSummaries() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
             scenario.onActivity(activity -> assertEquals(
                     2,
@@ -129,7 +129,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void dayOldSavedGameShowsContinueOrNewGameChoice() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
         }
 
@@ -150,7 +150,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void unresolvedOldGameKeepsItsOriginalSaveTimeAndAsksAgain() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
         }
 
@@ -182,7 +182,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void moveFlowRequiresResultThenPieceThenDestination() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
 
             scenario.onActivity(activity -> firstWaitingSpot(activity).performClick());
@@ -209,7 +209,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void backDoCannotPreviewOrConsumeWaitingPiece() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
 
             scenario.onActivity(activity -> activity.findViewById(R.id.btn_bdo).performClick());
@@ -232,7 +232,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void backgroundingDoesNotConsumeTurnTime() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
             int before = readTimerSeconds(scenario);
 
@@ -249,7 +249,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void waitingPieceHasLargeTouchTargetAndGuidanceAfterResult() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
 
             scenario.onActivity(activity -> {
@@ -276,7 +276,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void destinationAndMovedPieceShareTheExactBoardNodeCenter() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
             scenario.onActivity(activity -> activity.findViewById(R.id.btn_do).performClick());
             SystemClock.sleep(150L);
@@ -324,7 +324,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void destinationRecentersAfterASecondBoardLayoutPass() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
             scenario.onActivity(activity -> activity.findViewById(R.id.btn_do).performClick());
             SystemClock.sleep(150L);
@@ -361,7 +361,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void destinationAndPieceStayCenteredAcrossRotation() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
             scenario.onActivity(activity -> activity.findViewById(R.id.btn_do).performClick());
             SystemClock.sleep(150L);
@@ -423,7 +423,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void coordinatesTrackRenderedBoardThroughPanelsAndMidMoveRotation() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
             scenario.onActivity(activity -> activity.findViewById(R.id.btn_do).performClick());
             SystemClock.sleep(150L);
@@ -516,7 +516,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void destinationAndPieceStayCenteredAcrossRepeatedRecreation() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
             scenario.onActivity(activity -> activity.findViewById(R.id.btn_do).performClick());
             SystemClock.sleep(150L);
@@ -548,7 +548,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void timedModeAutomaticallyEndsTurnAtZeroBeforeInput() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
 
             scenario.onActivity(activity -> {
@@ -573,7 +573,7 @@ public class ExampleInstrumentedTest {
             scenario.onActivity(activity -> assertFalse(
                     activity.getWindow().getDecorView().getKeepScreenOn()));
 
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(150L);
             scenario.onActivity(activity -> assertTrue(
                     activity.getWindow().getDecorView().getKeepScreenOn()));
@@ -588,7 +588,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void pendingResultsRequireConfirmationBeforeManualTurnEnd() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(150L);
             scenario.onActivity(activity -> activity.findViewById(R.id.btn_do).performClick());
             SystemClock.sleep(150L);
@@ -604,7 +604,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void lastMoveCanBeUndoneAfterActivityRestart() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(150L);
             scenario.onActivity(activity -> activity.findViewById(R.id.btn_do).performClick());
             SystemClock.sleep(150L);
@@ -817,7 +817,7 @@ public class ExampleInstrumentedTest {
                 assertTextFits(activity.findViewById(R.id.btn_team_2));
                 assertTextFits(activity.findViewById(R.id.btn_team_3));
                 assertTextFits(activity.findViewById(R.id.btn_team_4));
-                activity.findViewById(R.id.btn_team_2).performClick();
+                TeamAppearanceInstrumentedTest.startRecommendedGame(activity);
             });
             SystemClock.sleep(300L);
 
@@ -850,7 +850,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void foldingPanelsReturnSpaceToTheSquareBoard() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(350L);
 
             AtomicInteger boardSideWithControls = new AtomicInteger();
@@ -894,7 +894,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void edgePanelTabsRemainAvailableThroughMoveFlow() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
             scenario.onActivity(activity -> activity.findViewById(R.id.btn_do).performClick());
             SystemClock.sleep(150L);
@@ -922,7 +922,7 @@ public class ExampleInstrumentedTest {
     @Test
     public void edgePanelTabsStayVisibleAndSwitchDirectly() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_team_2).performClick());
+            scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(350L);
 
             scenario.onActivity(activity -> {
