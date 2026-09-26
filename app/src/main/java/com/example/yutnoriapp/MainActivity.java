@@ -71,6 +71,9 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout.LayoutParams timedEndTurnParams;
     private LinearLayout unlimitedRolls;
     private LinearLayout unlimitedFooter;
+    private LinearLayout unlimitedWaiting;
+    private LinearLayout.LayoutParams horizontalWaitingParams;
+    private LinearLayout.LayoutParams horizontalLogParams;
     private boolean unlimitedControlsAttached;
     private final java.util.Map<View, ViewGroup> regularControlParents = new java.util.LinkedHashMap<>();
     private final java.util.Map<View, ViewGroup.LayoutParams> regularControlParams = new java.util.LinkedHashMap<>();
@@ -553,6 +556,7 @@ public class MainActivity extends AppCompatActivity {
         controlPanel.setVisibility(View.GONE);
         unlimitedRolls.setVisibility(View.GONE);
         unlimitedFooter.setVisibility(View.GONE);
+        unlimitedWaiting.setVisibility(View.GONE);
         setEdgePanelTabsVisible(false);
         setupPanel.setVisibility(View.VISIBLE);
         setupPanel.setElevation(dp(24));
@@ -802,15 +806,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void createWaitingTeamRow(int team) {
+        boolean vertical = usesVerticalWaitingTray();
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setOrientation(vertical ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(48));
+                vertical ? LinearLayout.LayoutParams.MATCH_PARENT : dp(48));
         waitingArea.addView(row, rowParams);
 
-        boolean compact = usesCompactWaitingTray();
         TextView label = new TextView(this);
         label.setText(teamName(team));
         label.setTextColor(getTeamColor(team));
@@ -822,13 +826,16 @@ public class MainActivity extends AppCompatActivity {
                 10, 13, 1,
                 TypedValue.COMPLEX_UNIT_SP);
         row.addView(label, new LinearLayout.LayoutParams(
-                dp(40),
-                LinearLayout.LayoutParams.WRAP_CONTENT));
+                vertical ? LinearLayout.LayoutParams.MATCH_PARENT : dp(40),
+                vertical ? dp(24) : LinearLayout.LayoutParams.WRAP_CONTENT));
+        if (vertical) label.setGravity(Gravity.CENTER);
 
         LinearLayout spots = new LinearLayout(this);
         spots.setGravity(Gravity.CENTER_VERTICAL);
-        spots.setOrientation(LinearLayout.HORIZONTAL);
-        row.addView(spots, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+        spots.setOrientation(vertical ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        row.addView(spots, vertical
+                ? new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+                : new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
 
         for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
             FrameLayout spot = new FrameLayout(this);
@@ -893,13 +900,15 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        GameStateStore.MoveUndoState undoCandidate = captureMoveUndoState();
+        undoCandidate.actionKind = GameStateStore.MoveUndoState.ROLL;
         YutGameEngine.ActionResult result = game.addRoll(steps);
         if (!result.success) {
             showToast(result.message);
             return;
         }
 
-        moveUndoState = null;
+        pushUndoState(undoCandidate);
         selectSinglePendingResult();
         textStatus.setText(getRollStatusMessage(steps, result.message));
         textStatus.setTextColor(getStatusColor());
@@ -968,8 +977,10 @@ public class MainActivity extends AppCompatActivity {
         }
 
         GameStateStore.MoveUndoState state = moveUndoState;
-        moveUndoState = null;
+        moveUndoState = state.previous;
         game.restoreState(state.engineState);
+        victoryPending = false;
+        bonusTimeBaselineResultId = state.bonusTimeBaselineResultId;
         remainingTurnMillis = turnDurationMillis <= 0L
                 ? 0L
                 : Math.max(0L, state.remainingTurnMillis);
@@ -983,11 +994,7 @@ public class MainActivity extends AppCompatActivity {
             selectedPreviewPieceId = -1;
         }
         restoreTurnLog(state.turnLog);
-        addTurnLog(getString(R.string.log_undo_move, teamName(game.getCurrentTeam())));
-        restoreGameScreen(getString(R.string.move_undone), getStatusColor());
-        if (selectedPreviewPieceId != -1) {
-
-        }
+        restoreGameScreen(state.statusMessage, state.statusColor);
         playFeedback(GameFeedback.TAP);
         persistGameState();
     }
@@ -1042,13 +1049,15 @@ public class MainActivity extends AppCompatActivity {
         }
 
         String endedTeamName = teamName(game.getCurrentTeam());
+        GameStateStore.MoveUndoState undoCandidate = captureMoveUndoState();
+        undoCandidate.actionKind = GameStateStore.MoveUndoState.TURN;
         YutGameEngine.ActionResult result = game.endTurn();
         if (!result.success) {
             showToast(result.message);
             return;
         }
 
-        moveUndoState = null;
+        pushUndoState(undoCandidate);
         textStatus.setText(result.message);
         textStatus.setTextColor(getStatusColor());
         addTurnLog(getString(R.string.log_turn_end, endedTeamName));
@@ -1198,7 +1207,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        moveUndoState = undoCandidate;
+        pushUndoState(undoCandidate);
         applyMoveResult(result, planText);
     }
 
@@ -1289,6 +1298,7 @@ public class MainActivity extends AppCompatActivity {
         syncTimerToNow();
         GameStateStore.MoveUndoState state = new GameStateStore.MoveUndoState();
         state.engineState = game.saveState();
+        state.bonusTimeBaselineResultId = bonusTimeBaselineResultId;
         state.remainingTurnMillis = remainingTurnMillis;
         state.timerPaused = isTimerPaused;
         state.timeExpiredNotified = timeExpiredNotified;
@@ -1300,6 +1310,18 @@ public class MainActivity extends AppCompatActivity {
                 : textStatus.getCurrentTextColor();
         state.turnLog = getTurnLogSnapshot();
         return state;
+    }
+
+    private void pushUndoState(GameStateStore.MoveUndoState state) {
+        state.previous = moveUndoState;
+        moveUndoState = state;
+        for (int count = 1; state.previous != null; count++) {
+            if (count >= GameStateStore.MAX_UNDO_ACTIONS) {
+                state.previous = null;
+                break;
+            }
+            state = state.previous;
+        }
     }
 
     private void updateStatusAfterMove(YutGameEngine.MoveResult result) {
@@ -2701,9 +2723,10 @@ public class MainActivity extends AppCompatActivity {
         }
         boolean canUndoMove = moveUndoState != null;
         boolean canUndoRoll = !game.isGameOver() && !game.getPendingResults().isEmpty();
-        undoButton.setText(canUndoMove ? R.string.undo_move : R.string.undo_last);
-        undoButton.setContentDescription(getString(
-                canUndoMove ? R.string.undo_move : R.string.undo_last));
+        int label = canUndoMove && moveUndoState.actionKind == GameStateStore.MoveUndoState.MOVE
+                ? R.string.undo_move : R.string.undo_last;
+        undoButton.setText(label);
+        undoButton.setContentDescription(getString(label));
         undoButton.setEnabled(gameStarted
                 && !isAnimatingMove
                 && (canUndoMove || canUndoRoll));
@@ -3405,6 +3428,8 @@ public class MainActivity extends AppCompatActivity {
         unlimitedControlsAttached = false;
         regularControlParents.clear();
         regularControlParams.clear();
+        horizontalWaitingParams = new LinearLayout.LayoutParams((LinearLayout.LayoutParams) waitingArea.getLayoutParams());
+        horizontalLogParams = new LinearLayout.LayoutParams((LinearLayout.LayoutParams) actionLogRail.getLayoutParams());
         int[] ids = {R.id.waiting_overview, R.id.results_row, R.id.btn_bdo, R.id.btn_do,
                 R.id.btn_gae, R.id.btn_geol, R.id.btn_yut, R.id.btn_mo};
         for (int id : ids) {
@@ -3423,6 +3448,16 @@ public class MainActivity extends AppCompatActivity {
         unlimitedFooter.setOrientation(LinearLayout.VERTICAL);
         unlimitedFooter.setVisibility(View.GONE);
         root.addView(unlimitedFooter, new ConstraintLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT));
+        unlimitedWaiting = new LinearLayout(this);
+        unlimitedWaiting.setId(R.id.unlimited_waiting);
+        unlimitedWaiting.setOrientation(LinearLayout.VERTICAL);
+        unlimitedWaiting.setVisibility(View.GONE);
+        root.addView(unlimitedWaiting, new ConstraintLayout.LayoutParams(dp(52), 0));
+    }
+
+    private boolean usesVerticalWaitingTray() {
+        return turnDurationMillis <= 0L
+                && getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
     }
 
     private void updateUnlimitedControls(boolean unlimited) {
@@ -3435,7 +3470,12 @@ public class MainActivity extends AppCompatActivity {
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
                 params.topMargin = dp(4);
-                unlimitedFooter.addView(row, params);
+                if (id == R.id.waiting_overview && usesVerticalWaitingTray()) {
+                    params.height = LinearLayout.LayoutParams.MATCH_PARENT;
+                    unlimitedWaiting.addView(row, params);
+                } else {
+                    unlimitedFooter.addView(row, params);
+                }
             }
             TextView title = new TextView(this);
             title.setText(R.string.roll_controls);
@@ -3472,7 +3512,15 @@ public class MainActivity extends AppCompatActivity {
         }
         unlimitedRolls.setVisibility(unlimited && gameStarted ? View.VISIBLE : View.GONE);
         unlimitedFooter.setVisibility(unlimited && gameStarted ? View.VISIBLE : View.GONE);
+        unlimitedWaiting.setVisibility(usesVerticalWaitingTray() && gameStarted ? View.VISIBLE : View.GONE);
+        LinearLayout overview = findViewById(R.id.waiting_overview);
+        overview.setOrientation(usesVerticalWaitingTray() ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        waitingArea.setLayoutParams(usesVerticalWaitingTray()
+                ? new LinearLayout.LayoutParams(-1, 0, 1f) : new LinearLayout.LayoutParams(horizontalWaitingParams));
+        actionLogRail.setLayoutParams(usesVerticalWaitingTray()
+                ? new LinearLayout.LayoutParams(-1, dp(48)) : new LinearLayout.LayoutParams(horizontalLogParams));
         if (gameStarted) {
+            rebuildCurrentWaitingArea();
             controlPanel.setVisibility(!unlimited && controlsPanelOpen ? View.VISIBLE : View.GONE);
             btnToggleControls.setVisibility(unlimited ? View.GONE : View.VISIBLE);
             applyBoardPanelConstraints(findViewById(R.id.root_layout));
@@ -3484,7 +3532,7 @@ public class MainActivity extends AppCompatActivity {
         ConstraintSet constraints = new ConstraintSet();
         constraints.clone(root);
         boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-        for (int id : new int[]{R.id.board_container, R.id.finish_destination, R.id.unlimited_rolls, R.id.unlimited_footer}) {
+        for (int id : new int[]{R.id.board_container, R.id.finish_destination, R.id.unlimited_rolls, R.id.unlimited_footer, R.id.unlimited_waiting}) {
             clearPanelTabConstraints(constraints, id);
         }
         constraints.setVisibility(R.id.control_panel, View.GONE);
@@ -3493,6 +3541,7 @@ public class MainActivity extends AppCompatActivity {
         constraints.setVisibility(R.id.top_panel, View.VISIBLE);
         constraints.setVisibility(R.id.unlimited_rolls, View.VISIBLE);
         constraints.setVisibility(R.id.unlimited_footer, View.VISIBLE);
+        constraints.setVisibility(R.id.unlimited_waiting, landscape ? View.VISIBLE : View.GONE);
         int top = landscape ? ConstraintSet.PARENT_ID : R.id.top_panel;
         int topSide = landscape ? ConstraintSet.TOP : ConstraintSet.BOTTOM;
         int left = landscape ? R.id.top_panel : ConstraintSet.PARENT_ID;
@@ -3505,7 +3554,11 @@ public class MainActivity extends AppCompatActivity {
         constraints.connect(R.id.unlimited_footer, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
         constraints.connect(R.id.unlimited_footer, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
         constraints.connect(R.id.board_container, ConstraintSet.START, left, leftSide, dp(4));
-        constraints.connect(R.id.board_container, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.START, dp(4));
+        constraints.connect(R.id.unlimited_waiting, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.START, dp(4));
+        constraints.connect(R.id.unlimited_waiting, ConstraintSet.TOP, top, topSide, dp(4));
+        constraints.connect(R.id.unlimited_waiting, ConstraintSet.BOTTOM, R.id.unlimited_footer, ConstraintSet.TOP, dp(4));
+        constraints.connect(R.id.board_container, ConstraintSet.END,
+                landscape ? R.id.unlimited_waiting : R.id.unlimited_rolls, ConstraintSet.START, dp(4));
         constraints.createVerticalChain(top, topSide, R.id.unlimited_footer, ConstraintSet.TOP,
                 new int[]{R.id.board_container, R.id.finish_destination}, null, ConstraintSet.CHAIN_PACKED);
         constraints.connect(R.id.finish_destination, ConstraintSet.END, R.id.board_container, ConstraintSet.END);

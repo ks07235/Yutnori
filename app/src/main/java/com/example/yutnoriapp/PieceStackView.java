@@ -24,7 +24,7 @@ public final class PieceStackView extends View {
     private int shape = TeamAppearance.CIRCLE;
     private boolean progressIndicator;
     private boolean finishedIndicator;
-    private final Paint pendingOutlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint finishedMarkPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private int brightColor = Color.WHITE;
     private int darkColor = Color.DKGRAY;
@@ -72,11 +72,12 @@ public final class PieceStackView extends View {
     void configureAppearance(int colorId, int shape, int pieceNumber) {
         this.shape = TeamAppearance.isShape(shape) ? shape : TeamAppearance.CIRCLE;
         textPaint.setColor(TeamAppearance.ink(colorId));
-        strokePaint.setColor(TeamAppearance.fill(colorId));
-        haloPaint.setColor(TeamAppearance.fill(colorId));
-        pendingOutlinePaint.setStyle(Paint.Style.STROKE);
-        pendingOutlinePaint.setStrokeWidth(dp(1.2f));
-        pendingOutlinePaint.setColor(TeamAppearance.label(colorId));
+        int border = TeamAppearance.fill(colorId) == Color.WHITE ? Color.BLACK : TeamAppearance.fill(colorId);
+        strokePaint.setColor(border);
+        haloPaint.setColor(border);
+        finishedMarkPaint.setColor(TeamAppearance.ink(colorId));
+        finishedMarkPaint.setStrokeWidth(dp(2.2f));
+        finishedMarkPaint.setStrokeCap(Paint.Cap.ROUND);
         configure(TeamAppearance.highlight(colorId), TeamAppearance.fill(colorId), pieceNumber);
     }
 
@@ -143,16 +144,21 @@ public final class PieceStackView extends View {
             fillGradient.setLocalMatrix(gradientMatrix);
             fillPaint.setShader(fillGradient);
             buildShape(centerX, centerY, Math.max(0f, radius - dp(1.5f)));
-            if (!progressIndicator || finishedIndicator) canvas.drawPath(shapePath, fillPaint);
+            canvas.drawPath(shapePath, fillPaint);
             canvas.drawPath(shapePath, haloPaint);
-            canvas.drawPath(shapePath, progressIndicator && !finishedIndicator ? pendingOutlinePaint : strokePaint);
+            canvas.drawPath(shapePath, strokePaint);
         }
 
-        if (groupCount == 1 && (!progressIndicator || finishedIndicator)) {
+        if (progressIndicator && finishedIndicator) {
+            float half = diameter * 0.18f;
+            float x = getWidth() / 2f, y = getHeight() / 2f;
+            canvas.drawLine(x - half, y - half, x + half, y + half, finishedMarkPaint);
+            canvas.drawLine(x - half, y + half, x + half, y - half, finishedMarkPaint);
+        } else if (groupCount == 1 && !progressIndicator) {
             textPaint.setTextSize(diameter * (shape == TeamAppearance.STAR ? 0.30f : 0.36f));
             Paint.FontMetrics metrics = textPaint.getFontMetrics();
             float baseline = (getHeight() / 2f) - ((metrics.ascent + metrics.descent) / 2f);
-            canvas.drawText(progressIndicator ? "✓" : pieceLabel, getWidth() / 2f, baseline, textPaint);
+            canvas.drawText(pieceLabel, getWidth() / 2f, baseline, textPaint);
         }
     }
 

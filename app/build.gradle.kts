@@ -31,8 +31,8 @@ android {
         applicationId = "com.das312.yutnori"
         minSdk = 24
         targetSdk = 36
-        versionCode = 50
-        versionName = "1.4.2"
+        versionCode = 51
+        versionName = "1.4.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -286,6 +286,18 @@ public class BoardUxTest {
         View[][] spots = (View[][]) field(activity, "waitSpots");
         assertTrue(bounds(activity.findViewById(R.id.waiting_area)).contains(bounds(spots[0][3])));
         screenshot("unlimited-landscape");
+        assertTrue(bounds(spots[0][3]).top > bounds(spots[0][0]).bottom);
+        assertEquals(bounds(spots[0][0]).left, bounds(spots[0][3]).left);
+        assertTrue(bounds(spots[0][0]).right <= bounds(activity.findViewById(R.id.unlimited_rolls)).left);
+        assertTrue("Moving the tray should free board space", activity.findViewById(R.id.board_container).getWidth() > 244);
+        showProgressExample();
+        screenshot("unlimited-landscape-progress");
+        // Restore active pieces before exercising normal play.
+        for (int team = 0; team < 4; team++) for (int id = 0; id < 4; id++) {
+            game().getPiece(team, id).isFinished = false;
+            game().getPiece(team, id).position = BoardPath.START_NODE;
+        }
+        call("updateFinishedSummary");
         activity.findViewById(R.id.btn_do).performClick();
         call("selectPiece", 0, 0);
         settle();
@@ -306,6 +318,73 @@ public class BoardUxTest {
         for (int elapsed = 0; elapsed < millis; elapsed += 16) {
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16));
         }
+    }
+
+    @Test public void repeatedUndoCrossesRollMoveAndTurnBoundariesAndSurvivesRecreation() {
+        settings(0L);
+        settle();
+        call("handleYutInput", 1);
+        call("selectPiece", 0, 0);
+        call("commitSelectedMove");
+        settle();
+        call("handleYutInput", 2);
+        call("selectPiece", 1, 0);
+        call("commitSelectedMove");
+        settle();
+        call("endCurrentTurn");
+        settle();
+        assertEquals(3, game().getCurrentTeam());
+        call("undoLastAction");
+        settle();
+        assertEquals(2, game().getCurrentTeam());
+        controller.recreate(); activity = controller.get(); settle();
+        call("undoLastAction"); settle();
+        assertEquals(1, game().getCurrentTeam());
+        assertEquals(BoardPath.START_NODE, game().getPiece(1, 0).position);
+        assertEquals(1, game().getPendingResults().size());
+        call("undoLastAction"); settle();
+        assertTrue(game().getPendingResults().isEmpty());
+        call("undoLastAction"); settle();
+        assertEquals(0, game().getCurrentTeam());
+        assertEquals(BoardPath.START_NODE, game().getPiece(0, 0).position);
+        call("undoLastAction"); settle();
+        assertTrue(game().getPendingResults().isEmpty());
+        assertFalse(activity.findViewById(R.id.btn_undo_roll).isEnabled());
+    }
+
+    @Test public void undoingFinishRestoresPieceAndRemovesFinishedMark() {
+        settings(0L);
+        game().getPiece(0, 0).position = 15;
+        call("handleYutInput", 1);
+        call("selectPiece", 0, 0);
+        settle(); call("commitSelectedMove"); settle();
+        assertTrue(game().getPiece(0, 0).isFinished);
+        call("undoLastAction"); settle();
+        assertFalse(game().getPiece(0, 0).isFinished);
+        assertEquals(15, game().getPiece(0, 0).position);
+        PieceStackView[][] icons = (PieceStackView[][]) field(activity, "teamProgressPieces");
+        assertEquals(false, field(icons[0][0], "finishedIndicator"));
+        call("undoLastAction"); settle();
+        assertTrue(game().getPendingResults().isEmpty());
+    }
+
+    @Test public void whiteProgressPiecesStayFilledAndShowBlackBorderAndFinishedX() {
+        PieceStackView icon = new PieceStackView(activity);
+        icon.configureAppearance(5, TeamAppearance.CIRCLE, 1);
+        icon.layout(0, 0, 64, 64);
+        icon.setFinishedIndicator(false);
+        Bitmap before = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+        icon.draw(new Canvas(before));
+        assertEquals(android.graphics.Color.WHITE, before.getPixel(32, 32));
+        boolean blackBorder = false;
+        for (int y = 0; y < 20; y++) if (before.getPixel(32, y) == android.graphics.Color.BLACK) blackBorder = true;
+        assertTrue(blackBorder);
+        icon.setFinishedIndicator(true);
+        Bitmap after = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888);
+        icon.draw(new Canvas(after));
+        assertNotEquals(android.graphics.Color.WHITE, after.getPixel(32, 32));
+        assertEquals(android.graphics.Color.WHITE, after.getPixel(32, 20));
+        before.recycle(); after.recycle();
     }
 
     private void showProgressExample() {

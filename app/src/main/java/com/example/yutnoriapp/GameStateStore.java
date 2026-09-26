@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 
 final class GameStateStore {
     static final long DEFAULT_TURN_DURATION_MILLIS = 180_000L;
+    static final int MAX_UNDO_ACTIONS = 100;
     static final long SAVED_GAME_CONFIRM_AFTER_MILLIS = 24L * 60L * 60L * 1_000L;
     static final long[] TURN_DURATION_OPTIONS_MILLIS = {
             60_000L, 120_000L, 180_000L, 300_000L, 0L
@@ -105,7 +106,7 @@ final class GameStateStore {
         engineState.pieceRoutes = parseInts(prefs.getString(KEY_ENGINE_ROUTES, ""));
         engineState.pieceFinished = parseBooleans(prefs.getString(KEY_ENGINE_FINISHED, ""));
         appState.engineState = engineState;
-        appState.moveUndoState = readMoveUndoState(defaultStatusColor);
+        appState.moveUndoState = readUndoHistory(defaultStatusColor);
         return appState;
     }
 
@@ -150,8 +151,63 @@ final class GameStateStore {
         editor.putString(KEY_ENGINE_POSITIONS, joinInts(state.piecePositions));
         editor.putString(KEY_ENGINE_ROUTES, joinInts(state.pieceRoutes));
         editor.putString(KEY_ENGINE_FINISHED, joinBooleans(state.pieceFinished));
-        writeMoveUndoState(editor, appState.moveUndoState);
+        writeUndoHistory(editor, appState.gameStarted ? appState.moveUndoState : null);
         editor.apply();
+    }
+
+    private MoveUndoState readUndoHistory(int defaultStatusColor) {
+        if (!prefs.contains("undo_history_count")) return readMoveUndoState(defaultStatusColor);
+        int count = Math.max(0, Math.min(MAX_UNDO_ACTIONS, prefs.getInt("undo_history_count", 0)));
+        MoveUndoState head = null;
+        for (int i = count - 1; i >= 0; i--) {
+            String prefix = "undo_history_" + i + "_";
+            MoveUndoState state = new MoveUndoState();
+            state.engineState = readEngineState(prefix + "engine_");
+            state.remainingTurnMillis = Math.max(0L, prefs.getLong(prefix + "remaining", 0L));
+            state.timerPaused = prefs.getBoolean(prefix + "paused", false);
+            state.timeExpiredNotified = prefs.getBoolean(prefix + "expired", false);
+            state.selectedTeamId = prefs.getInt(prefix + "team", -1);
+            state.selectedPieceId = prefs.getInt(prefix + "piece", -1);
+            state.statusMessage = prefs.getString(prefix + "status", "");
+            state.statusColor = prefs.getInt(prefix + "color", defaultStatusColor);
+            state.turnLog = parseStrings(prefs.getString(prefix + "log", ""));
+            state.actionKind = prefs.getInt(prefix + "action", MoveUndoState.MOVE);
+            state.bonusTimeBaselineResultId = prefs.getInt(prefix + "bonus_baseline", 0);
+            state.previous = head;
+            head = state;
+        }
+        return head;
+    }
+
+    private void writeUndoHistory(SharedPreferences.Editor editor, MoveUndoState state) {
+        int count = 0;
+        while (state != null && state.engineState != null && count < MAX_UNDO_ACTIONS) {
+            String prefix = "undo_history_" + count + "_";
+            writeEngineState(editor, prefix + "engine_", state.engineState);
+            editor.putLong(prefix + "remaining", state.remainingTurnMillis);
+            editor.putBoolean(prefix + "paused", state.timerPaused);
+            editor.putBoolean(prefix + "expired", state.timeExpiredNotified);
+            editor.putInt(prefix + "team", state.selectedTeamId);
+            editor.putInt(prefix + "piece", state.selectedPieceId);
+            editor.putString(prefix + "status", state.statusMessage);
+            editor.putInt(prefix + "color", state.statusColor);
+            editor.putString(prefix + "log", joinStrings(state.turnLog));
+            editor.putInt(prefix + "action", state.actionKind);
+            editor.putInt(prefix + "bonus_baseline", state.bonusTimeBaselineResultId);
+            state = state.previous;
+            count++;
+        }
+        int oldCount = Math.min(MAX_UNDO_ACTIONS, prefs.getInt("undo_history_count", 0));
+        if (oldCount > count) {
+            for (String key : prefs.getAll().keySet()) {
+                for (int i = count; i < oldCount; i++) {
+                    if (key.startsWith("undo_history_" + i + "_")) { editor.remove(key); break; }
+                }
+            }
+        }
+        editor.putInt("undo_history_count", count);
+        // Retire the old one-move slot after migration.
+        editor.putBoolean(KEY_MOVE_UNDO_AVAILABLE, false);
     }
 
     private MoveUndoState readMoveUndoState(int defaultStatusColor) {
@@ -366,6 +422,10 @@ final class GameStateStore {
     }
 
     static class MoveUndoState {
+        static final int ROLL = 0, MOVE = 1, TURN = 2;
+        int actionKind = MOVE;
+        int bonusTimeBaselineResultId;
+        MoveUndoState previous;
         long remainingTurnMillis;
         boolean timerPaused;
         boolean timeExpiredNotified;
