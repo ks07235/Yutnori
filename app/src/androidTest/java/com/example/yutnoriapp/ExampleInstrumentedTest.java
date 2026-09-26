@@ -120,9 +120,12 @@ public class ExampleInstrumentedTest {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(250L);
-            scenario.onActivity(activity -> assertEquals(
-                    2,
-                    ((ViewGroup) activity.findViewById(R.id.layout_finished_summary)).getChildCount()));
+            scenario.onActivity(activity -> {
+                ViewGroup rows = activity.findViewById(R.id.layout_finished_summary);
+                int teams = 0;
+                for (int i = 0; i < rows.getChildCount(); i++) teams += ((ViewGroup) rows.getChildAt(i)).getChildCount();
+                assertEquals(2, teams);
+            });
         }
     }
 
@@ -431,28 +434,29 @@ public class ExampleInstrumentedTest {
             SystemClock.sleep(400L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, false, false);
+                assertPanelState(activity, false);
                 assertDestinationOnRenderedBoard(activity, 16);
-                activity.findViewById(R.id.btn_toggle_info).performClick();
+                if (activity.findViewById(R.id.control_panel).getVisibility() == View.VISIBLE)
+                    activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(400L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, true, false);
-                assertDestinationOnRenderedBoard(activity, 16);
-                activity.findViewById(R.id.btn_toggle_controls).performClick();
-            });
-            SystemClock.sleep(400L);
-
-            scenario.onActivity(activity -> {
-                assertPanelState(activity, false, true);
+                assertPanelState(activity, false);
                 assertDestinationOnRenderedBoard(activity, 16);
                 activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(400L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, false, false);
+                assertPanelState(activity, true);
+                assertDestinationOnRenderedBoard(activity, 16);
+                activity.findViewById(R.id.btn_toggle_controls).performClick();
+            });
+            SystemClock.sleep(400L);
+
+            scenario.onActivity(activity -> {
+                assertPanelState(activity, false);
                 assertDestinationOnRenderedBoard(activity, 16);
                 activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             });
@@ -463,19 +467,20 @@ public class ExampleInstrumentedTest {
                         Configuration.ORIENTATION_LANDSCAPE,
                         activity.getResources().getConfiguration().orientation);
                 assertDestinationOnRenderedBoard(activity, 16);
-                activity.findViewById(R.id.btn_toggle_info).performClick();
+                if (activity.findViewById(R.id.control_panel).getVisibility() == View.VISIBLE)
+                    activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(400L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, true, false);
+                assertPanelState(activity, false);
                 assertDestinationOnRenderedBoard(activity, 16);
                 activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(400L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, false, true);
+                assertPanelState(activity, true);
                 View destination = findDestinationPreview(activity);
                 assertNotNull(destination);
                 assertViewCenteredOnRenderedBoard(activity, destination, 16);
@@ -492,12 +497,13 @@ public class ExampleInstrumentedTest {
                         Configuration.ORIENTATION_PORTRAIT,
                         activity.getResources().getConfiguration().orientation);
                 assertPieceOnRenderedBoard(activity, 16);
-                activity.findViewById(R.id.btn_toggle_info).performClick();
+                if (activity.findViewById(R.id.control_panel).getVisibility() == View.VISIBLE)
+                    activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(400L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, true, false);
+                assertPanelState(activity, false);
                 assertPieceOnRenderedBoard(activity, 16);
                 activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             });
@@ -507,7 +513,7 @@ public class ExampleInstrumentedTest {
                 assertEquals(
                         Configuration.ORIENTATION_LANDSCAPE,
                         activity.getResources().getConfiguration().orientation);
-                assertPanelState(activity, true, false);
+                assertPanelState(activity, false);
                 assertPieceOnRenderedBoard(activity, 16);
             });
         }
@@ -821,7 +827,10 @@ public class ExampleInstrumentedTest {
             });
             SystemClock.sleep(300L);
 
-            scenario.onActivity(activity -> activity.findViewById(R.id.btn_toggle_info).performClick());
+            scenario.onActivity(activity -> {
+                if (activity.findViewById(R.id.control_panel).getVisibility() == View.VISIBLE)
+                    activity.findViewById(R.id.btn_toggle_controls).performClick();
+            });
             SystemClock.sleep(300L);
             scenario.onActivity(activity -> assertTextFits(activity.findViewById(R.id.text_status)));
 
@@ -848,7 +857,7 @@ public class ExampleInstrumentedTest {
         }
     }
     @Test
-    public void foldingPanelsReturnSpaceToTheSquareBoard() {
+    public void foldingInputReturnsSpaceWithoutHidingTeamProgress() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(350L);
@@ -857,8 +866,8 @@ public class ExampleInstrumentedTest {
             scenario.onActivity(activity -> {
                 View board = activity.findViewById(R.id.board_container);
                 assertEquals(View.VISIBLE, activity.findViewById(R.id.control_panel).getVisibility());
-                assertEquals(View.GONE, activity.findViewById(R.id.top_panel).getVisibility());
-                assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_toggle_info).getVisibility());
+                assertEquals(View.VISIBLE, activity.findViewById(R.id.top_panel).getVisibility());
+                assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_info).getVisibility());
                 assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
                 assertEquals(board.getWidth(), board.getHeight());
                 boardSideWithControls.set(board.getWidth());
@@ -870,13 +879,14 @@ public class ExampleInstrumentedTest {
             scenario.onActivity(activity -> {
                 View board = activity.findViewById(R.id.board_container);
                 assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
-                assertEquals(View.GONE, activity.findViewById(R.id.top_panel).getVisibility());
-                assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_toggle_info).getVisibility());
+                assertEquals(View.VISIBLE, activity.findViewById(R.id.top_panel).getVisibility());
+                assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_info).getVisibility());
                 assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
                 assertEquals(board.getWidth(), board.getHeight());
                 assertTrue(board.getWidth() >= boardSideWithControls.get());
                 boardSideWithPanelsClosed.set(board.getWidth());
-                activity.findViewById(R.id.btn_toggle_info).performClick();
+                if (activity.findViewById(R.id.control_panel).getVisibility() == View.VISIBLE)
+                    activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(350L);
 
@@ -884,7 +894,7 @@ public class ExampleInstrumentedTest {
                 View board = activity.findViewById(R.id.board_container);
                 assertEquals(View.VISIBLE, activity.findViewById(R.id.top_panel).getVisibility());
                 assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
-                assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_toggle_info).getVisibility());
+                assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_info).getVisibility());
                 assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
                 assertEquals(board.getWidth(), board.getHeight());
                 assertTrue(board.getWidth() <= boardSideWithPanelsClosed.get());
@@ -902,66 +912,63 @@ public class ExampleInstrumentedTest {
             SystemClock.sleep(350L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, false, false);
+                assertPanelState(activity, false);
                 assertDestinationCentered(activity, 16);
                 activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(350L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, false, true);
+                assertPanelState(activity, true);
                 View destination = findDestinationPreview(activity);
                 assertNotNull(destination);
                 destination.performClick();
             });
             SystemClock.sleep(1_100L);
 
-            scenario.onActivity(activity -> assertPanelState(activity, false, true));
+            scenario.onActivity(activity -> assertPanelState(activity, true));
         }
     }
     @Test
-    public void edgePanelTabsStayVisibleAndSwitchDirectly() {
+    public void inputTabTogglesWhileInformationStaysVisible() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> TeamAppearanceInstrumentedTest.startRecommendedGame(activity));
             SystemClock.sleep(350L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, false, true);
-                activity.findViewById(R.id.btn_toggle_info).performClick();
+                assertPanelState(activity, true);
+                if (activity.findViewById(R.id.control_panel).getVisibility() == View.VISIBLE)
+                    activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(350L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, true, false);
+                assertPanelState(activity, false);
                 activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(350L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, false, true);
+                assertPanelState(activity, true);
                 activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(350L);
 
-            scenario.onActivity(activity -> assertPanelState(activity, false, false));
+            scenario.onActivity(activity -> assertPanelState(activity, false));
         }
     }
 
     private void assertPanelState(
             MainActivity activity,
-            boolean expectedInfoOpen,
             boolean expectedControlsOpen) {
         assertEquals(
-                expectedInfoOpen ? View.VISIBLE : View.GONE,
+                View.VISIBLE,
                 activity.findViewById(R.id.top_panel).getVisibility());
         assertEquals(
                 expectedControlsOpen ? View.VISIBLE : View.GONE,
                 activity.findViewById(R.id.control_panel).getVisibility());
-        assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_toggle_info).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_info).getVisibility());
         assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
-        assertEquals(
-                activity.getString(expectedInfoOpen ? R.string.drawer_close : R.string.info),
-                ((TextView) activity.findViewById(R.id.btn_toggle_info)).getText().toString());
         assertEquals(
                 activity.getString(expectedControlsOpen ? R.string.drawer_close : R.string.input),
                 ((TextView) activity.findViewById(R.id.btn_toggle_controls)).getText().toString());

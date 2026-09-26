@@ -64,7 +64,9 @@ public class MainActivity extends AppCompatActivity {
     private AppUpdateChecker appUpdateChecker;
     private PieceStackView[][] pieceViews;
     private FrameLayout[][] waitSpots;
-    private TextView[] finishedCountViews;
+    private LinearLayout[] teamProgressRows;
+    private PieceStackView[][] teamProgressPieces;
+    private TextView finishDestination;
     private FrameLayout boardContainer;
     private BoardOverlayLayout boardOverlay;
     private View boardArt;
@@ -114,7 +116,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean timeExpiredNotified = false;
     private long timerCheckpointElapsedMillis = 0L;
     private boolean gameStarted = false;
-    private boolean infoPanelOpen = false;
     private boolean controlsPanelOpen = true;
     private boolean edgePanelTransitionRunning = false;
     private int edgePanelTransitionGeneration = 0;
@@ -205,7 +206,9 @@ public class MainActivity extends AppCompatActivity {
 
         pieceViews = new PieceStackView[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
         waitSpots = new FrameLayout[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
-        finishedCountViews = new TextView[YutGameEngine.MAX_TEAM_COUNT];
+        teamProgressRows = new LinearLayout[YutGameEngine.MAX_TEAM_COUNT];
+        teamProgressPieces = new PieceStackView[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
+        createFinishDestination();
 
         createPieceViews();
         bindYutButtons();
@@ -479,26 +482,9 @@ public class MainActivity extends AppCompatActivity {
         if (!hasEdgePanels()) {
             return;
         }
+        btnToggleInfo.setVisibility(View.GONE);
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                (TextView) btnToggleInfo,
-                10, 14, 1,
-                TypedValue.COMPLEX_UNIT_SP);
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                (TextView) btnToggleControls,
-                10, 14, 1,
-                TypedValue.COMPLEX_UNIT_SP);
-        bindPressAction(R.id.btn_toggle_info, () -> {
-            if (isAnimatingMove) {
-                showToast(getString(R.string.piece_moving));
-                return;
-            }
-            boolean opening = !infoPanelOpen;
-            infoPanelOpen = opening;
-            if (opening) {
-                controlsPanelOpen = false;
-            }
-            applyEdgePanelState(true);
-        });
+                (TextView) btnToggleControls, 10, 14, 1, TypedValue.COMPLEX_UNIT_SP);
         bindPressAction(R.id.btn_toggle_controls, () -> {
             if (isAnimatingMove) {
                 showToast(getString(R.string.piece_moving));
@@ -506,9 +492,6 @@ public class MainActivity extends AppCompatActivity {
             }
             boolean opening = !controlsPanelOpen;
             controlsPanelOpen = opening;
-            if (opening) {
-                infoPanelOpen = false;
-            }
             applyEdgePanelState(true);
         });
     }
@@ -753,65 +736,67 @@ public class MainActivity extends AppCompatActivity {
 
     private void buildTeamAreas() {
         finishedSummaryLayout.removeAllViews();
+        finishedSummaryLayout.setOrientation(LinearLayout.VERTICAL);
         boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-        finishedSummaryLayout.setOrientation(landscape ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         waitingArea.removeAllViews();
         waitingArea.setOrientation(LinearLayout.VERTICAL);
-
-        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
-            finishedCountViews[team] = null;
-        }
+        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) teamProgressRows[team] = null;
+        LinearLayout row = null;
         for (int team = 0; team < game.getTeamCount(); team++) {
-            createFinishedTeamSummary(team, landscape);
+            if (landscape || team % 2 == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                finishedSummaryLayout.addView(row, new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(30)));
+            }
+            createFinishedTeamSummary(team, row);
         }
         updateFinishedSummary();
         rebuildCurrentWaitingArea();
     }
 
-    private void createFinishedTeamSummary(int team, boolean landscape) {
-        TextView summary = new TextView(this);
-        summary.setGravity(Gravity.CENTER_VERTICAL | (landscape ? Gravity.START : Gravity.CENTER_HORIZONTAL));
-        summary.setIncludeFontPadding(false);
-        summary.setTextColor(getTeamColor(team));
-        summary.setTextSize(12);
-        summary.setTypeface(Typeface.DEFAULT_BOLD);
-        summary.setPadding(dp(4), 0, dp(4), 0);
-        finishedCountViews[team] = summary;
-
-        int summaryHeight = isCompactPortrait() ? dp(24) : dp(28);
-        LinearLayout.LayoutParams params = landscape
-                ? new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, summaryHeight)
-                : new LinearLayout.LayoutParams(0, summaryHeight, 1f);
-        finishedSummaryLayout.addView(summary, params);
+    private void createFinishedTeamSummary(int team, LinearLayout parent) {
+        LinearLayout summary = new LinearLayout(this);
+        summary.setOrientation(LinearLayout.HORIZONTAL);
+        summary.setGravity(Gravity.CENTER_VERTICAL);
+        summary.setPadding(dp(3), dp(1), dp(3), dp(1));
+        summary.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        teamProgressRows[team] = summary;
+        parent.addView(summary, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+        TextView label = new TextView(this);
+        label.setText(teamName(team));
+        label.setTextColor(getTeamColor(team));
+        label.setTypeface(Typeface.DEFAULT_BOLD);
+        label.setMaxLines(1);
+        label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(label, 9, 12, 1, TypedValue.COMPLEX_UNIT_SP);
+        summary.addView(label, new LinearLayout.LayoutParams(dp(38), LinearLayout.LayoutParams.MATCH_PARENT));
+        for (int piece = 0; piece < YutGameEngine.PIECE_COUNT; piece++) {
+            PieceStackView icon = new PieceStackView(this);
+            icon.configureAppearance(teamColors[team], teamShapes[team], piece + 1);
+            icon.setFinishedIndicator(false);
+            icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            summary.addView(icon, new LinearLayout.LayoutParams(0, dp(26), 1f));
+            teamProgressPieces[team][piece] = icon;
+        }
     }
 
     private void updateFinishedSummary() {
-        if (finishedCountViews == null) {
-            return;
-        }
-        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        if (teamProgressRows == null) return;
         for (int team = 0; team < game.getTeamCount(); team++) {
-            TextView summary = finishedCountViews[team];
-            if (summary == null) {
-                continue;
-            }
+            LinearLayout summary = teamProgressRows[team];
+            if (summary == null) continue;
             int finishedCount = 0;
             for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                if (game.getPiece(team, id).isFinished) {
-                    finishedCount++;
-                }
+                boolean finished = game.getPiece(team, id).isFinished;
+                if (finished) finishedCount++;
+                teamProgressPieces[team][id].setFinishedIndicator(finished);
             }
-            String summaryText = getString(
-                    landscape ? R.string.finished_summary_landscape : R.string.finished_summary_portrait,
-                    teamName(team),
-                    finishedCount,
-                    YutGameEngine.PIECE_COUNT);
-            summary.setText(summaryText);
-            summary.setContentDescription(getString(
-                    R.string.finished_summary_description,
-                    teamName(team),
-                    finishedCount,
-                    YutGameEngine.PIECE_COUNT));        }
+            summary.setBackgroundColor(team == game.getCurrentTeam()
+                    ? getResources().getColor(R.color.accent_gold_soft) : Color.TRANSPARENT);
+            summary.setContentDescription(getString(R.string.finished_summary_description,
+                    teamName(team), finishedCount, YutGameEngine.PIECE_COUNT));
+        }
     }
 
     private void createWaitingTeamRow(int team) {
@@ -862,6 +847,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void rebuildCurrentWaitingArea() {
+        updateFinishedSummary();
         waitingArea.removeAllViews();
         for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
             for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
@@ -1747,42 +1733,61 @@ public class MainActivity extends AppCompatActivity {
         return boardOverlay.centerForSpot(spotIndex);
     }
 
+    private void createFinishDestination() {
+        finishDestination = new TextView(this);
+        finishDestination.setId(R.id.finish_destination);
+        finishDestination.setText(R.string.finish_destination);
+        finishDestination.setContentDescription(getString(R.string.finish_destination_description));
+        finishDestination.setGravity(Gravity.CENTER);
+        finishDestination.setTextColor(getResources().getColor(R.color.text_primary));
+        finishDestination.setTextSize(14);
+        finishDestination.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable tile = new GradientDrawable();
+        tile.setColor(getResources().getColor(R.color.accent_gold_soft));
+        tile.setCornerRadius(dp(12));
+        tile.setStroke(dp(2), getResources().getColor(R.color.board_direction));
+        finishDestination.setBackground(tile);
+        finishDestination.setElevation(dp(14));
+        finishDestination.setVisibility(View.GONE);
+        finishDestination.setClickable(true);
+        finishDestination.setFocusable(true);
+        finishDestination.setOnClickListener(v -> {
+            if (selectedPreviewTeamId == game.getCurrentTeam() && selectedPreviewPieceId >= 0) {
+                YutGameEngine.MovePreview preview = game.previewMove(selectedPreviewTeamId, selectedPreviewPieceId);
+                if (preview.available && preview.finishes) runPressAction(v, this::commitSelectedMove);
+            }
+        });
+        ConstraintLayout root = findViewById(R.id.root_layout);
+        root.addView(finishDestination, new ConstraintLayout.LayoutParams(dp(64), dp(48)));
+    }
+
+    private void setFinishDestinationVisible(boolean visible) {
+        if (finishDestination == null) return;
+        int visibility = visible ? View.VISIBLE : View.GONE;
+        if (finishDestination.getVisibility() == visibility) return;
+        finishDestination.setVisibility(visibility);
+        if (gameStarted) applyBoardPanelConstraints(findViewById(R.id.root_layout));
+        scheduleBoardLayoutRefresh();
+    }
+
     private void updateMovePreviews() {
-        clearMovePreviews();
-        if (game.getSelectedSteps().isEmpty()
-                || game.isGameOver()
-                || selectedPreviewTeamId != game.getCurrentTeam()
-                || selectedPreviewPieceId == -1) {
+        clearMovePreviews(false);
+        if (isAnimatingMove || game.getSelectedSteps().isEmpty() || game.isGameOver()
+                || selectedPreviewTeamId != game.getCurrentTeam() || selectedPreviewPieceId == -1) {
+            setFinishDestinationVisible(false);
             return;
         }
-
+        YutGameEngine.MovePreview preview = game.previewMove(selectedPreviewTeamId, selectedPreviewPieceId);
+        setFinishDestinationVisible(preview.available && preview.finishes);
+        if (!preview.available || preview.finishes) return;
         int previewGeneration = movePreviewGeneration;
         int activeLayoutGeneration = layoutGeneration;
-        int teamId = selectedPreviewTeamId;
-        int pieceId = selectedPreviewPieceId;
+        int spotIndex = preview.targetNode == BoardPath.START_NODE
+                ? BoardGeometry.START_SPOT : game.visualSpotFor(preview.targetNode);
         boardOverlay.post(() -> {
-            if (previewGeneration != movePreviewGeneration
-                    || activeLayoutGeneration != layoutGeneration
-                    || teamId != selectedPreviewTeamId
-                    || pieceId != selectedPreviewPieceId
-                    || teamId != game.getCurrentTeam()
-                    || game.getSelectedSteps().isEmpty()
-                    || game.isGameOver()) {
-                return;
-            }
-            YutGameEngine.MovePreview preview = game.previewMove(teamId, pieceId);
-            if (!preview.available) {
-                return;
-            }
-            int spotIndex = preview.finishes
-                    ? BoardGeometry.START_SPOT
-                    : preview.targetNode == BoardPath.START_NODE
-                            ? BoardGeometry.START_SPOT
-                            : game.visualSpotFor(preview.targetNode);
-            if (spotIndex < 0 || spotIndex >= BoardGeometry.POINTS.length) {
-                return;
-            }
-            addPreviewGlow(spotIndex);
+            if (previewGeneration != movePreviewGeneration || activeLayoutGeneration != layoutGeneration
+                    || isAnimatingMove || game.isGameOver()) return;
+            if (spotIndex >= 0 && spotIndex < BoardGeometry.POINTS.length) addPreviewGlow(spotIndex);
         });
     }
 
@@ -1864,6 +1869,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void clearMovePreviews() {
+        clearMovePreviews(true);
+    }
+
+    private void clearMovePreviews(boolean hideFinish) {
+        if (hideFinish) setFinishDestinationVisible(false);
         movePreviewGeneration++;
         for (View previewView : previewViews) {
             ViewGroup parent = (ViewGroup) previewView.getParent();
@@ -2186,7 +2196,6 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         controlsPanelOpen = false;
-        infoPanelOpen = false;
         applyEdgePanelState(true);
     }
 
@@ -2195,11 +2204,10 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         boolean shouldOpen = game.isRollAllowed() || !game.getPendingResults().isEmpty();
-        if (controlsPanelOpen == shouldOpen && !infoPanelOpen) {
+        if (controlsPanelOpen == shouldOpen) {
             return;
         }
         controlsPanelOpen = shouldOpen;
-        infoPanelOpen = false;
         applyEdgePanelState(animate);
     }
     private void prepareEdgePanels(boolean resetToDefault) {
@@ -2207,7 +2215,6 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         if (resetToDefault) {
-            infoPanelOpen = false;
             controlsPanelOpen = true;
         }
         setEdgePanelTabsVisible(true);
@@ -2219,7 +2226,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         int visibility = visible ? View.VISIBLE : View.GONE;
-        btnToggleInfo.setVisibility(visibility);
+        btnToggleInfo.setVisibility(View.GONE);
         btnToggleControls.setVisibility(visibility);
     }
 
@@ -2251,18 +2258,14 @@ public class MainActivity extends AppCompatActivity {
         btnToggleControls.setTranslationX(0f);
         btnToggleControls.setTranslationY(0f);
 
-        topPanel.setVisibility(infoPanelOpen ? View.VISIBLE : View.GONE);
+        topPanel.setVisibility(View.VISIBLE);
         controlPanel.setVisibility(controlsPanelOpen ? View.VISIBLE : View.GONE);
-        btnToggleInfo.setVisibility(View.VISIBLE);
+        btnToggleInfo.setVisibility(View.GONE);
         btnToggleControls.setVisibility(View.VISIBLE);
         applyBoardPanelConstraints(root);
         updateDrawerTabLabel(
-                (TextView) btnToggleInfo,
-                getString(infoPanelOpen ? R.string.drawer_close : R.string.info));
-        updateDrawerTabLabel(
                 (TextView) btnToggleControls,
                 getString(controlsPanelOpen ? R.string.drawer_close : R.string.input));
-        btnToggleInfo.setSelected(infoPanelOpen);
         btnToggleControls.setSelected(controlsPanelOpen);
 
         topPanel.bringToFront();
@@ -2282,109 +2285,37 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void applyBoardPanelConstraints(ViewGroup root) {
-        if (!(root instanceof ConstraintLayout)) {
-            return;
-        }
-
+        if (!(root instanceof ConstraintLayout)) return;
         ConstraintSet constraints = new ConstraintSet();
         constraints.clone((ConstraintLayout) root);
-        boolean landscape = getResources().getConfiguration().orientation
-                == Configuration.ORIENTATION_LANDSCAPE;
-        applyPanelTabConstraints(constraints, landscape);
-        applyPanelTabBackgrounds(landscape);
-        if (landscape) {
-            constraints.connect(
-                    R.id.board_container,
-                    ConstraintSet.START,
-                    infoPanelOpen ? R.id.btn_toggle_info : R.id.top_panel,
-                    ConstraintSet.END);
-            constraints.connect(
-                    R.id.board_container,
-                    ConstraintSet.END,
-                    controlsPanelOpen ? R.id.btn_toggle_controls : R.id.control_panel,
-                    ConstraintSet.START);
-        } else {
-            constraints.connect(
-                    R.id.board_container,
-                    ConstraintSet.TOP,
-                    infoPanelOpen ? R.id.btn_toggle_info : R.id.top_panel,
-                    ConstraintSet.BOTTOM);
-            constraints.connect(
-                    R.id.board_container,
-                    ConstraintSet.BOTTOM,
-                    controlsPanelOpen ? R.id.btn_toggle_controls : R.id.control_panel,
-                    ConstraintSet.TOP);
-        }
-        constraints.applyTo((ConstraintLayout) root);
-    }
-
-    private void applyPanelTabConstraints(ConstraintSet constraints, boolean landscape) {
+        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         clearPanelTabConstraints(constraints, R.id.btn_toggle_info);
         clearPanelTabConstraints(constraints, R.id.btn_toggle_controls);
-        int[] tabs = {R.id.btn_toggle_info, R.id.btn_toggle_controls};
-
+        clearPanelTabConstraints(constraints, R.id.finish_destination);
+        constraints.setVisibility(R.id.btn_toggle_info, View.GONE);
+        constraints.setVisibility(R.id.top_panel, View.VISIBLE);
+        int topId = landscape ? ConstraintSet.PARENT_ID : R.id.top_panel;
+        int topSide = landscape ? ConstraintSet.TOP : ConstraintSet.BOTTOM;
+        int bottomId = landscape ? ConstraintSet.PARENT_ID : R.id.btn_toggle_controls;
+        int bottomSide = landscape ? ConstraintSet.BOTTOM : ConstraintSet.TOP;
         if (landscape) {
-            if (infoPanelOpen || controlsPanelOpen) {
-                int panelId = infoPanelOpen ? R.id.top_panel : R.id.control_panel;
-                int panelSide = infoPanelOpen ? ConstraintSet.END : ConstraintSet.START;
-                int tabSide = infoPanelOpen ? ConstraintSet.START : ConstraintSet.END;
-                constraints.connect(R.id.btn_toggle_info, tabSide, panelId, panelSide);
-                constraints.connect(R.id.btn_toggle_controls, tabSide, panelId, panelSide);
-                constraints.createVerticalChain(
-                        ConstraintSet.PARENT_ID,
-                        ConstraintSet.TOP,
-                        ConstraintSet.PARENT_ID,
-                        ConstraintSet.BOTTOM,
-                        tabs,
-                        null,
-                        ConstraintSet.CHAIN_PACKED);
-                constraints.setMargin(R.id.btn_toggle_info, ConstraintSet.BOTTOM, dp(4));
-            } else {
-                constraints.connect(
-                        R.id.btn_toggle_info,
-                        ConstraintSet.START,
-                        R.id.top_panel,
-                        ConstraintSet.END);
-                constraints.connect(
-                        R.id.btn_toggle_controls,
-                        ConstraintSet.END,
-                        R.id.control_panel,
-                        ConstraintSet.START);
-                centerTabVertically(constraints, R.id.btn_toggle_info);
-                centerTabVertically(constraints, R.id.btn_toggle_controls);
-            }
-            return;
-        }
-
-        if (infoPanelOpen || controlsPanelOpen) {
-            int panelId = infoPanelOpen ? R.id.top_panel : R.id.control_panel;
-            int panelSide = infoPanelOpen ? ConstraintSet.BOTTOM : ConstraintSet.TOP;
-            int tabSide = infoPanelOpen ? ConstraintSet.TOP : ConstraintSet.BOTTOM;
-            constraints.connect(R.id.btn_toggle_info, tabSide, panelId, panelSide);
-            constraints.connect(R.id.btn_toggle_controls, tabSide, panelId, panelSide);
-            constraints.createHorizontalChainRtl(
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.START,
-                    ConstraintSet.PARENT_ID,
-                    ConstraintSet.END,
-                    tabs,
-                    null,
-                    ConstraintSet.CHAIN_PACKED);
-            constraints.setMargin(R.id.btn_toggle_info, ConstraintSet.END, dp(4));
+            constraints.connect(R.id.btn_toggle_controls, ConstraintSet.END, R.id.control_panel, ConstraintSet.START);
+            centerTabVertically(constraints, R.id.btn_toggle_controls);
+            constraints.connect(R.id.board_container, ConstraintSet.START, R.id.top_panel, ConstraintSet.END, dp(4));
+            constraints.connect(R.id.board_container, ConstraintSet.END, R.id.btn_toggle_controls, ConstraintSet.START, dp(4));
         } else {
-            constraints.connect(
-                    R.id.btn_toggle_info,
-                    ConstraintSet.TOP,
-                    R.id.top_panel,
-                    ConstraintSet.BOTTOM);
-            constraints.connect(
-                    R.id.btn_toggle_controls,
-                    ConstraintSet.BOTTOM,
-                    R.id.control_panel,
-                    ConstraintSet.TOP);
-            centerTabHorizontally(constraints, R.id.btn_toggle_info);
+            constraints.connect(R.id.btn_toggle_controls, ConstraintSet.BOTTOM, R.id.control_panel, ConstraintSet.TOP);
             centerTabHorizontally(constraints, R.id.btn_toggle_controls);
         }
+        // Keep the temporary finish tile immediately below the board, outside its touch layer.
+        constraints.createVerticalChain(topId, topSide, bottomId, bottomSide,
+                new int[]{R.id.board_container, R.id.finish_destination}, null, ConstraintSet.CHAIN_PACKED);
+        constraints.connect(R.id.finish_destination, ConstraintSet.END, R.id.board_container, ConstraintSet.END);
+        constraints.setMargin(R.id.finish_destination, ConstraintSet.TOP, dp(4));
+        constraints.setGoneMargin(R.id.board_container, ConstraintSet.BOTTOM, 0);
+        constraints.applyTo((ConstraintLayout) root);
+        btnToggleControls.setBackgroundResource(landscape
+                ? R.drawable.shape_drawer_tab_right : R.drawable.shape_drawer_tab_bottom);
     }
 
     private void clearPanelTabConstraints(ConstraintSet constraints, int viewId) {
@@ -2411,24 +2342,6 @@ public class MainActivity extends AppCompatActivity {
         constraints.connect(viewId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
     }
 
-    private void applyPanelTabBackgrounds(boolean landscape) {
-        if (landscape) {
-            btnToggleInfo.setBackgroundResource(controlsPanelOpen
-                    ? R.drawable.shape_drawer_tab_info_right
-                    : R.drawable.shape_drawer_tab_left);
-            btnToggleControls.setBackgroundResource(infoPanelOpen
-                    ? R.drawable.shape_drawer_tab_input_left
-                    : R.drawable.shape_drawer_tab_right);
-            return;
-        }
-
-        btnToggleInfo.setBackgroundResource(controlsPanelOpen
-                ? R.drawable.shape_drawer_tab_info_bottom
-                : R.drawable.shape_drawer_tab_top);
-        btnToggleControls.setBackgroundResource(infoPanelOpen
-                ? R.drawable.shape_drawer_tab_input_top
-                : R.drawable.shape_drawer_tab_bottom);
-    }
     private void refreshBoardAfterPanelLayout() {
         if (!gameStarted
                 || isAnimatingMove
@@ -2462,6 +2375,14 @@ public class MainActivity extends AppCompatActivity {
                 && configuration.screenWidthDp < 600;
     }
     private void applyResponsiveSizing() {
+        if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE
+                && usesCompactWaitingTray()) {
+            setViewWidthIfPresent(R.id.top_panel, 156);
+            setViewWidthIfPresent(R.id.control_panel, 292);
+            ((TextView) findViewById(R.id.text_title)).setTextSize(14);
+            textStatus.setMaxLines(3);
+            textStatus.setTextSize(12);
+        }
         if (!isCompactPortrait()) {
             return;
         }

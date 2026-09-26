@@ -205,4 +205,6 @@
     <string name="piece_shape_triangle">삼각형</string>
     <string name="piece_shape_star">별</string>
     <string name="piece_shape_hexagon">육각형</string>
+    <string name="finish_destination">골인</string>
+    <string name="finish_destination_description">선택한 말 또는 업힌 말을 골인시키기</string>
 </resources>

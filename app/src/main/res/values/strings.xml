@@ -206,4 +206,6 @@
     <string name="piece_shape_triangle">Triangle</string>
     <string name="piece_shape_star">Star</string>
     <string name="piece_shape_hexagon">Hexagon</string>
+    <string name="finish_destination">Finish</string>
+    <string name="finish_destination_description">Finish the selected piece or stack</string>
 </resources>

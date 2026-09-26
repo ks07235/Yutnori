@@ -23,12 +23,16 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     defaultConfig {
         applicationId = "com.das312.yutnori"
         minSdk = 24
         targetSdk = 36
-        versionCode = 48
-        versionName = "1.4.0"
+        versionCode = 49
+        versionName = "1.4.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -71,6 +75,7 @@ dependencies {
     implementation(libs.core)
     implementation(libs.play.app.update)
     testImplementation(libs.junit)
+    testImplementation("org.robolectric:robolectric:4.16.1")
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
 }
