@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <array name="turn_duration_labels">
+        <item>@string/turn_duration_1</item>
+        <item>@string/turn_duration_2</item>
+        <item>@string/turn_duration_3</item>
+        <item>@string/turn_duration_5</item>
+        <item>@string/turn_duration_unlimited</item>
+    </array>
+</resources>

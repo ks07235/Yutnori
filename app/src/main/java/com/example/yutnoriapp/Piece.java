@@ -1,17 +1,22 @@
 package com.example.yutnoriapp;
 
+/* JADX INFO: loaded from: classes3.dex */
 public class Piece {
-    public int teamId; // 팀 구분 변수
     public int id;
-    public int position;
     public boolean isFinished;
-    public int route; //  어느 지름길을 탔는지. 빽도 때문에 추가 (0: 외곽 경로, 1: 우상단 꺾임, 2: 좌상단 꺾임)
+    public int position;
+    public int route;
+    public int teamId;
 
     public Piece(int teamId, int id) {
         this.teamId = teamId;
         this.id = id;
+        reset();
+    }
+
+    public void reset() {
         this.position = -1;
         this.isFinished = false;
-        this.route = 0; // 처음엔 무조건 외곽 경로(0)로 시작
+        this.route = 0;
     }
 }

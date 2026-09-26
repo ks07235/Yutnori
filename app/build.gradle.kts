@@ -11,11 +11,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.yutnoriapp"
+        applicationId = "com.das312.yutnori"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 38
+        versionName = "1.0.0-recovered"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
