@@ -58,7 +58,12 @@ if (!(Test-Path -LiteralPath $Source)) {
     throw "Source image does not exist: $Source"
 }
 
-Copy-Item -LiteralPath $Source -Destination (Join-Path $storeDir "yutnori-launcher-icon-source.png") -Force
+$sourceArchive = Join-Path $storeDir "yutnori-launcher-icon-source.png"
+$resolvedSource = (Resolve-Path -LiteralPath $Source).Path
+$resolvedArchive = if (Test-Path -LiteralPath $sourceArchive) { (Resolve-Path -LiteralPath $sourceArchive).Path } else { $null }
+if ($resolvedSource -ne $resolvedArchive) {
+    Copy-Item -LiteralPath $Source -Destination $sourceArchive -Force
+}
 
 $image = [System.Drawing.Image]::FromFile($Source)
 try {
@@ -71,7 +76,7 @@ try {
     }
 
     Save-SquareIcon $image 512 $store512
-    Copy-Item -LiteralPath $store512 -Destination $adaptiveArt -Force
+    Copy-Item -LiteralPath $Source -Destination $adaptiveArt -Force
 }
 finally {
     $image.Dispose()

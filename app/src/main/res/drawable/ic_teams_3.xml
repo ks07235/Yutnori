@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="46dp"
+    android:height="32dp"
+    android:viewportWidth="46"
+    android:viewportHeight="32">
+    <path
+        android:fillColor="@color/team1_dark"
+        android:pathData="M8,9 A7,7 0,1 1,8,23 A7,7 0,1 1,8,9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.25" />
+    <path
+        android:fillColor="@color/team2_dark"
+        android:pathData="M23,9 A7,7 0,1 1,23,23 A7,7 0,1 1,23,9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.25" />
+    <path
+        android:fillColor="@color/team3_dark"
+        android:pathData="M38,9 A7,7 0,1 1,38,23 A7,7 0,1 1,38,9"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.25" />
+</vector>

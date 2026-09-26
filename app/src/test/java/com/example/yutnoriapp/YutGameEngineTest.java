@@ -88,15 +88,123 @@ public class YutGameEngineTest {
     }
 
     @Test
-    public void backDoFromStartIsPreviewableAsNoMovement() {
+    public void backDoFromStartIsUnavailableAndCannotConsumeResult() {
         YutGameEngine game = new YutGameEngine();
 
         game.addRoll(-1);
         game.selectResult(0);
+
         YutGameEngine.MovePreview preview = game.previewMove(0, 0);
+        YutGameEngine.MoveResult result = game.moveSelectedPiece(0, 0);
+
+        assertFalse(preview.available);
+        assertFalse(result.success);
+        assertEquals(BoardPath.START_NODE, game.getPiece(0, 0).position);
+        assertEquals(1, game.getPendingResults().size());
+        assertEquals(-1, (int) game.getPendingResults().get(0));
+        assertEquals(1, game.getSelectedSteps().size());
+        assertEquals(0, game.getCurrentTeam());
+    }
+
+    @Test
+    public void secondNormalResultIsRejectedWithoutChangingPendingPlan() {
+        YutGameEngine game = new YutGameEngine();
+
+        assertTrue(game.addRoll(-1).success);
+        assertFalse(game.addRoll(1).success);
+        game.selectResult(0);
+
+        assertFalse(game.previewMove(0, 0).available);
+        assertFalse(game.moveSelectedPiece(0, 0).success);
+        assertEquals(BoardPath.START_NODE, game.getPiece(0, 0).position);
+        assertEquals(1, game.getPendingResults().size());
+        assertEquals(-1, (int) game.getPendingResults().get(0));
+        assertEquals(1, game.getSelectedSteps().size());
+        assertEquals(0, game.getNormalRollAllowance());
+    }
+
+    @Test
+    public void undoingNormalResultRestoresNormalInputAllowance() {
+        YutGameEngine game = new YutGameEngine();
+
+        assertTrue(game.addRoll(1).success);
+        assertFalse(game.addRoll(-1).success);
+        assertEquals(0, game.getNormalRollAllowance());
+
+        assertTrue(game.undoLastRoll().success);
+
+        assertEquals(1, game.getNormalRollAllowance());
+        assertTrue(game.addRoll(-1).success);
+        assertEquals(1, game.getPendingResults().size());
+        assertEquals(-1, (int) game.getPendingResults().get(0));
+        assertEquals(0, game.getNormalRollAllowance());
+    }
+
+    @Test
+    public void backDoMovesPieceAlreadyOnBoard() {
+        YutGameEngine game = new YutGameEngine();
+        game.getPiece(0, 0).position = 17;
+
+        game.addRoll(-1);
+        game.selectResult(0);
+
+        YutGameEngine.MovePreview preview = game.previewMove(0, 0);
+        YutGameEngine.MoveResult result = game.moveSelectedPiece(0, 0);
 
         assertTrue(preview.available);
-        assertEquals(BoardPath.START_NODE, preview.targetNode);
+        assertEquals(16, preview.targetNode);
+        assertTrue(result.success);
+        assertEquals(16, game.getPiece(0, 0).position);
+    }
+
+    @Test
+    public void singleResultPreviewMatchesCommittedMoveAcrossEveryBoardRoute() {
+        java.util.ArrayList<int[]> boardStates = new java.util.ArrayList<>();
+        for (int position = 0; position <= 19; position++) {
+            boardStates.add(new int[]{position, 0});
+        }
+        for (int position = 20; position <= 24; position++) {
+            boardStates.add(new int[]{position, 1});
+        }
+        for (int position = 25; position <= 29; position++) {
+            boardStates.add(new int[]{position, 3});
+        }
+        boardStates.add(new int[]{10, 3});
+        boardStates.add(new int[]{15, 1});
+
+        int[] results = {-1, 1, 2, 3, 4, 5};
+        for (int[] state : boardStates) {
+            for (int steps : results) {
+                YutGameEngine game = new YutGameEngine();
+                Piece piece = game.getPiece(0, 0);
+                piece.position = state[0];
+                piece.route = state[1];
+                game.addRoll(steps);
+                game.selectResult(0);
+
+                String scenario = "node=" + state[0] + ", route=" + state[1] + ", steps=" + steps;
+                YutGameEngine.MovePreview preview = game.previewMove(0, 0);
+                YutGameEngine.MoveResult move = game.moveSelectedPiece(0, 0);
+
+                assertTrue(scenario, preview.available);
+                assertTrue(scenario, move.success);
+                assertEquals(scenario, preview.targetNode, move.targetNode);
+                assertEquals(scenario, preview.targetNode, game.getPiece(0, 0).position);
+            }
+        }
+    }
+
+    @Test
+    public void endTurnDiscardsUnusableWaitingBackDo() {
+        YutGameEngine game = new YutGameEngine();
+
+        game.addRoll(-1);
+        game.selectResult(0);
+
+        assertTrue(game.endTurn().success);
+        assertEquals(1, game.getCurrentTeam());
+        assertEquals(0, game.getPendingResults().size());
+        assertEquals(BoardPath.START_NODE, game.getPiece(0, 0).position);
     }
 
     @Test
@@ -130,6 +238,56 @@ public class YutGameEngineTest {
         assertTrue(game.setTeamCount(4).success);
 
         assertEquals(4, game.getTeamCount());
+    }
+
+    @Test
+    public void friendlyPiecesMeetingAtCenterBecomeOneMovingGroup() {
+        YutGameEngine game = new YutGameEngine();
+        game.getPiece(0, 0).position = 21;
+        game.getPiece(0, 0).route = 1;
+        game.getPiece(0, 1).position = 29;
+        game.getPiece(0, 1).route = 3;
+
+        game.addRoll(1);
+        game.selectResult(0);
+        assertTrue(game.moveSelectedPiece(0, 0).success);
+
+        assertEquals(22, game.getPiece(0, 0).position);
+        assertEquals(22, game.getPiece(0, 1).position);
+        assertEquals(1, game.getPiece(0, 1).route);
+    }
+
+    @Test
+    public void landingOnAlternateCenterNodeCapturesOpponent() {
+        YutGameEngine game = new YutGameEngine();
+        game.getPiece(0, 0).position = 21;
+        game.getPiece(0, 0).route = 1;
+        game.getPiece(1, 0).position = 29;
+        game.getPiece(1, 0).route = 3;
+
+        game.addRoll(1);
+        game.selectResult(0);
+        YutGameEngine.MoveResult result = game.moveSelectedPiece(0, 0);
+
+        assertTrue(result.success);
+        assertTrue(result.caught);
+        assertEquals(BoardPath.START_NODE, game.getPiece(1, 0).position);
+    }
+
+    @Test
+    public void piecesAlreadyOnBothCenterRoutesMoveTogether() {
+        YutGameEngine game = new YutGameEngine();
+        game.getPiece(0, 0).position = 22;
+        game.getPiece(0, 0).route = 1;
+        game.getPiece(0, 1).position = 29;
+        game.getPiece(0, 1).route = 3;
+
+        game.addRoll(1);
+        game.selectResult(0);
+        assertTrue(game.moveSelectedPiece(0, 0).success);
+
+        assertEquals(23, game.getPiece(0, 0).position);
+        assertEquals(23, game.getPiece(0, 1).position);
     }
 
     @Test
@@ -334,9 +492,9 @@ public class YutGameEngineTest {
     @Test
     public void animationSegmentsReflectPiecesJoiningMidMove() {
         YutGameEngine game = new YutGameEngine();
-        game.getPiece(0, 1).position = 17;
+        game.getPiece(0, 1).position = 19;
 
-        game.addRoll(2);
+        game.addRoll(4);
         game.addRoll(1);
         game.selectResult(0);
         game.selectResult(1);
@@ -345,6 +503,9 @@ public class YutGameEngineTest {
         assertTrue(result.success);
         assertEquals(2, result.animationSegments.size());
         assertEquals(1, result.animationSegments.get(0).pieceIds.size());
+        assertEquals(2, result.animationSegments.get(0).arrivedPieceIds.size());
+        assertTrue(result.animationSegments.get(0).arrivedPieceIds.contains(0));
+        assertTrue(result.animationSegments.get(0).arrivedPieceIds.contains(1));
         assertEquals(2, result.animationSegments.get(1).pieceIds.size());
         assertTrue(result.animationSegments.get(1).pieceIds.contains(0));
         assertTrue(result.animationSegments.get(1).pieceIds.contains(1));
@@ -526,6 +687,32 @@ public class YutGameEngineTest {
     }
 
     @Test
+    public void preMoveSnapshotRestoresStackAndCapturedOpponent() {
+        YutGameEngine game = new YutGameEngine();
+        game.getPiece(0, 0).position = 16;
+        game.getPiece(0, 1).position = 16;
+        game.getPiece(1, 0).position = 17;
+        game.addRoll(1);
+        game.selectResult(0);
+
+        YutGameEngine.SavedState beforeMove = game.saveState();
+        YutGameEngine.MoveResult move = game.moveSelectedPiece(0, 0);
+
+        assertTrue(move.success);
+        assertTrue(move.caught);
+        assertEquals(BoardPath.START_NODE, game.getPiece(1, 0).position);
+
+        game.restoreState(beforeMove);
+
+        assertEquals(16, game.getPiece(0, 0).position);
+        assertEquals(16, game.getPiece(0, 1).position);
+        assertEquals(17, game.getPiece(1, 0).position);
+        assertEquals(1, game.getPendingResults().size());
+        assertEquals(1, game.getSelectedSteps().size());
+        assertEquals(0, game.getCurrentTeam());
+    }
+
+    @Test
     public void restoreNormalizesFinishedPieceToEndNode() {
         YutGameEngine game = new YutGameEngine();
         YutGameEngine.SavedState state = game.saveState();
@@ -546,13 +733,15 @@ public class YutGameEngineTest {
         state.pendingSteps = new int[] {2, 5, 3, 99};
         state.selectedResultIds = new int[] {4, 4, -1};
         state.nextResultId = 1;
+        state.normalRollAllowance = -1;
 
         game.restoreState(state);
 
         assertEquals(1, game.getPendingResults().size());
         assertEquals(2, (int) game.getPendingResults().get(0));
         assertEquals(1, game.getSelectedSteps().size());
-        game.addRoll(1);
+        assertFalse(game.addRoll(1).success);
+        assertTrue(game.addRoll(4).success);
         assertEquals(2, game.getPendingResults().size());
     }
 
@@ -567,5 +756,111 @@ public class YutGameEngineTest {
         game.restoreState(state);
 
         assertEquals(BoardPath.START_NODE, game.getPiece(2, 0).position);
+    }
+
+    @Test
+    public void englishLanguageLocalizesGameplayText() {
+        YutGameEngine game = new YutGameEngine(false);
+
+        assertEquals("Team 1", game.getLocalizedTeamName(0));
+        assertEquals("Back Do", game.getLocalizedResultName(-1));
+        assertTrue(game.setTeamCount(2).message.contains("2-team"));
+        assertTrue(game.addRoll(4).message.contains("Yut"));
+        assertEquals("Yut", game.getMoveChoices().get(0).label);
+        assertTrue(game.getWaitingPieceBackDoMessage().contains("cannot use Back Do"));
+    }
+
+    @Test
+    public void gaeAndYutConsumeTheSameAllowanceInEitherInputOrder() {
+        YutGameEngine gaeFirst = new YutGameEngine();
+        YutGameEngine yutFirst = new YutGameEngine();
+
+        assertTrue(gaeFirst.addRoll(2).success);
+        assertTrue(gaeFirst.addRoll(4).success);
+        assertTrue(yutFirst.addRoll(4).success);
+        assertTrue(yutFirst.addRoll(2).success);
+
+        assertEquals(0, gaeFirst.getNormalRollAllowance());
+        assertEquals(0, yutFirst.getNormalRollAllowance());
+        assertEquals(2, gaeFirst.getPendingResults().size());
+        assertEquals(2, yutFirst.getPendingResults().size());
+        assertFalse(gaeFirst.addRoll(1).success);
+        assertFalse(yutFirst.addRoll(-1).success);
+    }
+
+    @Test
+    public void multipleYutAndMoRemainValidButOnlyOneNormalResultIsAccepted() {
+        YutGameEngine game = new YutGameEngine();
+
+        assertTrue(game.addRoll(4).success);
+        assertTrue(game.addRoll(5).success);
+        assertTrue(game.addRoll(4).success);
+        assertEquals(1, game.getNormalRollAllowance());
+
+        assertTrue(game.addRoll(3).success);
+        assertEquals(0, game.getNormalRollAllowance());
+        assertFalse(game.addRoll(2).success);
+        assertEquals(4, game.getPendingResults().size());
+    }
+
+    @Test
+    public void captureGrantsExactlyOneAdditionalNormalInput() {
+        YutGameEngine game = new YutGameEngine();
+        game.getPiece(0, 0).position = 16;
+        game.getPiece(1, 0).position = 17;
+
+        game.addRoll(1);
+        game.selectResult(0);
+        assertTrue(game.moveSelectedPiece(0, 0).caught);
+        assertEquals(1, game.getNormalRollAllowance());
+
+        assertTrue(game.addRoll(2).success);
+        assertEquals(0, game.getNormalRollAllowance());
+        assertFalse(game.addRoll(3).success);
+    }
+
+    @Test
+    public void normalInputAllowanceSurvivesSaveAndRestore() {
+        YutGameEngine game = new YutGameEngine();
+        game.addRoll(4);
+        game.addRoll(2);
+
+        YutGameEngine restored = new YutGameEngine();
+        restored.restoreState(game.saveState());
+
+        assertEquals(0, restored.getNormalRollAllowance());
+        assertFalse(restored.addRoll(1).success);
+        assertTrue(restored.addRoll(5).success);
+        assertEquals(3, restored.getPendingResults().size());
+    }
+
+    @Test
+    public void separateCaptureLandingsEachGrantOneAdditionalInput() {
+        YutGameEngine game = new YutGameEngine();
+        game.getPiece(1, 0).position = 16;
+        game.getPiece(1, 1).position = 0;
+        game.addRoll(1);
+        game.addRoll(4);
+        game.selectResult(0);
+        game.selectResult(1);
+        YutGameEngine.MoveResult result = game.moveSelectedPiece(0, 0);
+        assertEquals(2, result.captureEventCount());
+        assertEquals(2, game.getNormalRollAllowance());
+        assertTrue(game.addRoll(1).success);
+        assertTrue(game.addRoll(2).success);
+        assertFalse(game.addRoll(3).success);
+    }
+
+    @Test
+    public void capturingAStackStillGrantsOnlyOneAdditionalInput() {
+        YutGameEngine game = new YutGameEngine();
+        game.getPiece(1, 0).position = 16;
+        game.getPiece(1, 1).position = 16;
+        game.addRoll(1);
+        game.selectResult(0);
+        YutGameEngine.MoveResult result = game.moveSelectedPiece(0, 0);
+        assertEquals(2, result.caughtPieces.size());
+        assertEquals(1, result.captureEventCount());
+        assertEquals(1, game.getNormalRollAllowance());
     }
 }

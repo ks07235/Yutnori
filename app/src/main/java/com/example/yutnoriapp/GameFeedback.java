@@ -12,6 +12,7 @@ final class GameFeedback {
     static final int MOVE = 1;
     static final int CATCH = 2;
     static final int WIN = 3;
+    static final int SELECT = 4;
 
     private final Vibrator vibrator;
     private ToneGenerator toneGenerator;
@@ -45,43 +46,70 @@ final class GameFeedback {
     }
 
     void play(int type) {
-        if (soundEnabled && toneGenerator != null) {
-            int tone = ToneGenerator.TONE_PROP_BEEP;
-            int duration = 35;
-            if (type == MOVE) {
-                tone = ToneGenerator.TONE_PROP_BEEP;
-                duration = 55;
-            } else if (type == CATCH) {
-                tone = ToneGenerator.TONE_PROP_ACK;
-                duration = 90;
-            } else if (type == WIN) {
-                tone = ToneGenerator.TONE_PROP_ACK;
-                duration = 180;
-            }
-            toneGenerator.startTone(tone, duration);
-        }
-
+        playTone(type);
         if (!vibrationEnabled || vibrator == null || !vibrator.hasVibrator()) {
             return;
         }
 
-        long duration = 18L;
-        int amplitude = 40;
-        if (type == MOVE) {
-            duration = 28L;
-            amplitude = 55;
-        } else if (type == CATCH) {
-            duration = 75L;
-            amplitude = 110;
-        } else if (type == WIN) {
-            duration = 140L;
-            amplitude = 150;
+        if (type == CATCH) {
+            vibratePattern(
+                    new long[]{0L, 38L, 45L, 52L},
+                    new int[]{0, 112, 0, 82});
+            return;
+        }
+        if (type == WIN) {
+            vibratePattern(
+                    new long[]{0L, 70L, 55L, 115L},
+                    new int[]{0, 105, 0, 150});
+            return;
         }
 
+        long duration = 12L;
+        int amplitude = 30;
+        if (type == SELECT) {
+            duration = 17L;
+            amplitude = 45;
+        } else if (type == MOVE) {
+            duration = 30L;
+            amplitude = 68;
+        }
+        vibrateOneShot(duration, amplitude);
+    }
+
+    private void playTone(int type) {
+        if (!soundEnabled || toneGenerator == null) {
+            return;
+        }
+
+        int tone = ToneGenerator.TONE_PROP_BEEP;
+        int duration = 35;
+        if (type == SELECT) {
+            duration = 24;
+        } else if (type == MOVE) {
+            duration = 55;
+        } else if (type == CATCH) {
+            tone = ToneGenerator.TONE_PROP_ACK;
+            duration = 90;
+        } else if (type == WIN) {
+            tone = ToneGenerator.TONE_PROP_ACK;
+            duration = 180;
+        }
+        toneGenerator.startTone(tone, duration);
+    }
+
+    private void vibrateOneShot(long duration, int amplitude) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude));
         } else {
             vibrator.vibrate(duration);
+        }
+    }
+
+    private void vibratePattern(long[] timings, int[] amplitudes) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1));
+        } else {
+            vibrator.vibrate(timings, -1);
         }
     }
 

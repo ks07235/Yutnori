@@ -13,8 +13,13 @@
 /store-assets/
 *.jks
 *.keystore
+*.apk
+*.aab
 /keystore.properties
 /captures
 .externalNativeBuild
 .cxx
 local.properties
+~$*.docx
+/icon-audit/
+/privacy-site/

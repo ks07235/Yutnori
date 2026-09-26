@@ -9,6 +9,7 @@
         <item name="colorOnSecondary">@color/ink_black</item>
         <item name="colorSurface">@color/surface_panel_soft</item>
         <item name="colorOnSurface">@color/text_primary</item>
+        <item name="android:windowBackground">@color/bg_main</item>
         <item name="colorOutline">@color/surface_panel_stroke</item>
         <item name="android:colorAccent">@color/button_end</item>
         <item name="android:windowLightStatusBar">true</item>

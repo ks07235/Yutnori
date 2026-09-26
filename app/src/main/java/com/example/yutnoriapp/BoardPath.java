@@ -143,6 +143,10 @@ public class BoardPath {
         return logicalNode == 29 ? 22 : logicalNode;
     }
 
+    public boolean isSameBoardSpot(int firstNode, int secondNode) {
+        return visualSpotFor(firstNode) == visualSpotFor(secondNode);
+    }
+
     public static boolean isValidNode(int node) {
         return node >= START_NODE && node <= END_NODE;
     }

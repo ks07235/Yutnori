@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">윷놀이</string>
+    <string name="settings">설정</string>
+    <string name="recent_history">최근 기록</string>
+    <string name="new_game">새 게임</string>
+    <string name="new_game_title">새 게임 시작</string>
+    <string name="new_game_message">현재 게임 기록과 말의 위치를 모두 초기화하고 새 게임을 시작할까요?</string>
+    <string name="new_game_confirm_countdown">네 (%1$d초)</string>
+    <string name="new_game_confirm_ready">네, 새 게임</string>
+    <string name="no">아니요</string>
+    <string name="close">닫기</string>
+    <string name="apply">적용</string>
+    <string name="timer_default">03:00</string>
+    <string name="initial_status">1팀 차례 · 윷 결과를 입력하세요.</string>
+    <string name="pause_time">시간 정지</string>
+    <string name="resume_time">계속하기</string>
+    <string name="no_time_limit">제한 없음</string>
+    <string name="unlimited">무제한</string>
+    <string name="end_turn">턴 종료</string>
+    <string name="undo_last">마지막 취소</string>
+    <string name="info">정보</string>
+    <string name="input">윷 입력</string>
+    <string name="drawer_close">닫기</string>
+    <string name="info_panel_toggle">게임 정보 패널 열기 또는 접기</string>
+    <string name="controls_panel_toggle">윷 입력 패널 열기 또는 접기</string>
+    <string name="yut_backdo_steps">빽도  -1</string>
+    <string name="yut_do_steps">도  +1</string>
+    <string name="yut_gae_steps">개  +2</string>
+    <string name="yut_geol_steps">걸  +3</string>
+    <string name="yut_yut_steps">윷  +4</string>
+    <string name="yut_mo_steps">모  +5</string>
+    <string name="yut_backdo_description">빽도, 뒤로 1칸</string>
+    <string name="yut_do_description">도, 앞으로 1칸</string>
+    <string name="yut_gae_description">개, 앞으로 2칸</string>
+    <string name="yut_geol_description">걸, 앞으로 3칸</string>
+    <string name="yut_yut_description">윷, 앞으로 4칸</string>
+    <string name="yut_mo_description">모, 앞으로 5칸</string>
+    <string name="team_selection">몇 팀으로 시작할까요?</string>
+    <string name="choose_team_count">팀 수를 선택하면 게임이 바로 시작됩니다.</string>
+    <string name="start_two_teams">2팀으로 시작</string>
+    <string name="start_three_teams">3팀으로 시작</string>
+    <string name="start_four_teams">4팀으로 시작</string>
+    <string name="team_two_detail">1 대 1</string>
+    <string name="team_three_detail">3팀 차례 진행</string>
+    <string name="team_four_detail">4팀 차례 진행</string>
+    <string name="game_rules">게임 규칙</string>
+    <string name="game_rules_summary">턴 시간: %1$s</string>
+    <string name="game_rules_description">한 턴에 사용할 시간을 선택하세요.</string>
+    <string name="game_rules_unlimited_note">※ 무제한에서는 시간이 지나도 턴이 강제로 종료되지 않습니다.</string>
+    <string name="change_game_rules">게임 규칙 변경</string>
+    <string name="board_start">출발</string>
+    <string name="team_turn">%1$s 차례입니다.</string>
+    <string name="piece_description">%1$s %2$d번 말</string>
+    <string name="waiting_piece_description">%1$s %2$d번 대기 말</string>
+    <string name="selectable_piece_description">%1$s %2$d&#xBC88; &#xB9D0;. &#xC774;&#xB3D9; &#xAC00;&#xB2A5;</string>
+    <string name="grouped_piece_description">%1$s 업힌 말 %2$d개</string>
+    <string name="finished_summary_landscape">%1$s 완주 %2$d/%3$d</string>
+    <string name="finished_summary_portrait">%1$s %2$d/%3$d</string>
+    <string name="finished_summary_description">%1$s 완주 %2$d개, 전체 %3$d개</string>
+    <string name="piece_moving">말이 이동 중입니다.</string>
+    <string name="exit_confirm">한 번 더 누르면 게임이 종료됩니다.</string>
+    <string name="select_result_first">먼저 사용할 윷 결과를 선택하세요.</string>
+    <string name="tap_destination">빛나는 도착 칸을 눌러 이동하세요.</string>
+    <string name="destination_description">도착 칸. 눌러서 말 이동</string>
+    <string name="roll_status_bonus">%1$s(%2$s) 입력 · 더 던지거나 움직일 말을 고르세요.</string>
+    <string name="roll_status_move">%1$s(%2$s) 입력 · 움직일 말을 고르세요.</string>
+    <string name="timer_turn_ended">&#xC2DC;&#xAC04; &#xC885;&#xB8CC;. %1$s &#xCC28;&#xB840;&#xC785;&#xB2C8;&#xB2E4;.</string>
+    <string name="history">기록</string>
+    <string name="history_none">기록 없음</string>
+    <string name="history_recent_description">최근 기록. 최근 행동을 최대 200개까지 봅니다.</string>
+    <string name="history_all">최근 기록</string>
+    <string name="history_entry_title">기록 %1$d</string>
+    <string name="history_saved_count">최근 기록 %1$d개가 저장되어 있습니다.</string>
+    <string name="history_view_all">최근 기록 보기</string>
+    <string name="history_clear">기록 초기화</string>
+    <string name="history_cleared">기록을 초기화했습니다.</string>
+    <string name="settings_turn_time">턴 시간</string>
+    <string name="settings_feedback">표현</string>
+    <string name="settings_sound">효과음</string>
+    <string name="settings_vibration">진동</string>
+    <string name="settings_saved">설정을 저장했습니다.</string>
+    <string name="turn_duration_1">1분</string>
+    <string name="turn_duration_2">2분</string>
+    <string name="turn_duration_3">3분</string>
+    <string name="turn_duration_5">5분</string>
+    <string name="turn_duration_unlimited">무제한</string>
+    <string-array name="turn_duration_labels">
+        <item>@string/turn_duration_1</item>
+        <item>@string/turn_duration_2</item>
+        <item>@string/turn_duration_3</item>
+        <item>@string/turn_duration_5</item>
+        <item>@string/turn_duration_unlimited</item>
+    </string-array>
+    <string name="about">앱 정보</string>
+    <string name="privacy_policy">개인정보 처리방침</string>
+    <string name="privacy_policy_body">윷놀이는 개인 정보나 기기 정보를 수집, 전송, 공유 또는 판매하지 않습니다. 게임 설정, 진행 상태와 기록은 이 기기에만 저장됩니다. 계정, 광고, 사용 분석 또는 제3자 추적 기능을 사용하지 않습니다. 앱을 삭제하면 기기에 저장된 정보도 삭제될 수 있습니다. 개인정보 관련 문의는 Google Play 등록정보에 표시된 개발자 이메일을 이용해 주세요.</string>
+    <string name="game_over_new_game">새 게임</string>
+    <string name="game_over_view_board">판 보기</string>
+    <string name="victory_title">%1$s 승리!</string>
+    <string name="game_over_summary">모든 말이 완주했습니다.\n\n승리 팀: %1$s\n완주: %2$d/%3$d\n최근 기록: %4$d개</string>
+    <string name="game_over_last_actions">\n\n마지막 진행\n%1$s</string>
+    <string name="log_new_game">%1$s: 새 게임 시작</string>
+    <string name="log_roll">%1$s: %2$s 입력</string>
+    <string name="log_undo_roll">%1$s: 마지막 윷 결과 취소</string>
+    <string name="log_turn_end">%1$s: 턴 종료</string>
+    <string name="log_turn_timeout">%1$s: &#xC2DC;&#xAC04; &#xCD08;&#xACFC;&#xB85C; &#xD134; &#xC885;&#xB8CC;</string>
+    <string name="log_move_base">%1$s: %2$s %3$s 이동</string>
+    <string name="log_capture_suffix">, 상대 %1$d개 잡음</string>
+    <string name="log_finish_suffix">, %1$d개 완주</string>
+    <string name="log_victory_suffix">, 승리</string>
+    <string name="log_move_fallback">이동</string>
+    <string name="piece_ids_fallback">말</string>
+    <string name="piece_ids">%1$s번 말</string>
+    <string name="log_keyword_victory">승리</string>
+    <string name="log_keyword_finished">완주</string>
+    <string name="log_keyword_captured">잡음</string>
+    <string name="log_keyword_moved">이동</string>
+    <string name="log_keyword_undo">취소</string>
+    <string name="log_keyword_turn_end">턴 종료</string>
+    <string name="log_keyword_new_game">새 게임</string>
+    <string name="log_keyword_roll">입력</string>
+    <string name="timer_paused_description">일시정지. 남은 시간 %1$s</string>
+    <string name="timer_settings_description">설정 중. 남은 시간 %1$s</string>
+    <string name="timer_remaining_description">남은 시간 %1$s</string>
+    <string name="update_available_title">새 버전이 있어요</string>
+    <string name="update_available_message">더 안정적인 최신 버전을 Play 스토어에서 업데이트할 수 있습니다.</string>
+    <string name="update_now">업데이트</string>
+    <string name="update_later">나중에</string>
+    <string name="app_version_format">버전 %1$s (%2$d)</string>
+    <string name="app_version_update_format">버전 %1$s (%2$d) · Play 스토어 확인</string>
+    <string name="check_updates">Play 스토어 확인</string>
+    <string name="saved_game_title">저장된 게임을 이어갈까요?</string>
+    <string name="saved_game_message">이전에 진행하던 게임이 이 기기에 저장되어 있습니다. 마지막 상태에서 계속할까요?</string>
+    <string name="continue_game">이어하기</string>
+    <string name="end_turn_pending_title">턴을 종료할까요?</string>
+    <plurals name="end_turn_pending_message">
+        <item quantity="other">사용하지 않은 윷 결과가 %1$d개 남아 있습니다. 결과를 버리고 턴을 종료할까요?</item>
+    </plurals>
+    <string name="keep_playing">계속하기</string>
+    <string name="undo_move">이동 취소</string>
+    <string name="move_undone">마지막 이동을 취소했습니다. 말과 도착 칸을 다시 선택하세요.</string>
+    <string name="log_undo_move">%1$s: 마지막 이동 취소</string>
+    <string name="how_to_play">게임 방법</string>
+    <string name="how_to_play_body">1. 실제 윷을 던진 뒤 나온 결과를 앱에 입력합니다.\n\n2. 사용할 결과를 원하는 이동 순서대로 하나 이상 선택합니다.\n\n3. 움직일 말을 누르면 갈 수 있는 도착 칸이 빛납니다.\n\n4. 도착 표시를 누르면 말이 이동합니다. 같은 칸의 내 말은 함께 움직이고, 상대 말이 있는 칸에 도착하면 상대 말을 대기로 돌려보냅니다.\n\n5. 윷·모가 나오거나 상대 말을 잡으면 한 번 더 던집니다. 빽도는 판 위의 말을 한 칸 뒤로 이동하며 대기 중인 말에는 사용할 수 없습니다.\n\n6. 진행을 마치면 턴 종료를 누릅니다. 시간전에서는 시간이 0이 되면 자동으로 턴이 종료됩니다.</string>
+    <string name="play_store_unavailable">Play 스토어를 열 수 없습니다.</string>
+    <string name="log_location_suffix"> (%1$s → %2$s)</string>
+    <string name="location_waiting">출발 대기</string>
+    <string name="location_finished">완주</string>
+    <string name="location_board">윷판</string>
+    <string-array name="board_spot_names">
+        <item>오른쪽 위 모퉁이</item>
+        <item>윗길 오른쪽에서 첫째 칸</item>
+        <item>윗길 오른쪽에서 둘째 칸</item>
+        <item>윗길 오른쪽에서 셋째 칸</item>
+        <item>윗길 오른쪽에서 넷째 칸</item>
+        <item>왼쪽 위 모퉁이</item>
+        <item>왼쪽 길 위에서 첫째 칸</item>
+        <item>왼쪽 길 위에서 둘째 칸</item>
+        <item>왼쪽 길 위에서 셋째 칸</item>
+        <item>왼쪽 길 위에서 넷째 칸</item>
+        <item>왼쪽 아래 모퉁이</item>
+        <item>아랫길 왼쪽에서 첫째 칸</item>
+        <item>아랫길 왼쪽에서 둘째 칸</item>
+        <item>아랫길 왼쪽에서 셋째 칸</item>
+        <item>아랫길 왼쪽에서 넷째 칸</item>
+        <item>출발 모퉁이</item>
+        <item>오른쪽 길 아래에서 첫째 칸</item>
+        <item>오른쪽 길 아래에서 둘째 칸</item>
+        <item>오른쪽 길 아래에서 셋째 칸</item>
+        <item>오른쪽 길 아래에서 넷째 칸</item>
+        <item>왼쪽 위 지름길 바깥 칸</item>
+        <item>왼쪽 위 지름길 안쪽 칸</item>
+        <item>중앙</item>
+        <item>오른쪽 아래 지름길 안쪽 칸</item>
+        <item>오른쪽 아래 지름길 바깥 칸</item>
+        <item>왼쪽 아래 지름길 바깥 칸</item>
+        <item>왼쪽 아래 지름길 안쪽 칸</item>
+        <item>오른쪽 위 지름길 안쪽 칸</item>
+        <item>오른쪽 위 지름길 바깥 칸</item>
+    </string-array>
+</resources>

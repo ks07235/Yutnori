@@ -38,4 +38,8 @@
     <color name="btn_text_color">#FFFFFF</color>
     <color name="btn_restart">#EC6A5E</color>
     <color name="preview_glow">#F8C74E</color>
+    <color name="timer_warning">#825200</color>
+    <color name="timer_urgent">#B3261E</color>
+    <color name="board_direction">#B97816</color>
+    <color name="board_start_text">#193A42</color>
 </resources>

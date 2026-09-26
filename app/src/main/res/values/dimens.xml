@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="team_setup_panel_padding">24dp</dimen>
+    <dimen name="team_setup_header_height">48dp</dimen>
+    <dimen name="team_setup_title_size">26sp</dimen>
+    <dimen name="team_setup_hint_size">15sp</dimen>
+    <dimen name="team_setup_hint_margin_top">8dp</dimen>
+    <dimen name="team_setup_button_height">64dp</dimen>
+    <dimen name="team_setup_button_gap">8dp</dimen>
+    <dimen name="team_setup_button_text_size">18sp</dimen>
+    <dimen name="team_setup_button_text_min_size">13sp</dimen>
+    <dimen name="team_setup_button_text_max_size">18sp</dimen>
+    <dimen name="team_setup_button_drawable_padding">14dp</dimen>
+    <dimen name="team_setup_rules_height">64dp</dimen>
+    <dimen name="team_setup_rules_margin_top">16dp</dimen>
+    <dimen name="team_setup_card_margin_top">12dp</dimen>
+</resources>

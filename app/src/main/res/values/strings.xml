@@ -1,9 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Yutnori</string>
-    <string name="settings">설정</string>
-    <string name="new_game_title">새 게임 시작</string>
-    <string name="new_game_message">현재 게임 기록과 말의 위치를 모두 초기화하고 새 게임을 시작할까요?</string>
-    <string name="new_game_confirm_countdown">네 (%1$d초)</string>
-    <string name="new_game_confirm_ready">네, 새 게임</string>
-    <string name="no">아니요</string>
+    <string name="settings">Settings</string>
+    <string name="recent_history">Recent history</string>
+    <string name="new_game">New game</string>
+    <string name="new_game_title">Start a new game</string>
+    <string name="new_game_message">Start over and clear the current game history and all piece positions?</string>
+    <string name="new_game_confirm_countdown">Yes (%1$d sec)</string>
+    <string name="new_game_confirm_ready">Yes, new game</string>
+    <string name="no">No</string>
+    <string name="close">Close</string>
+    <string name="apply">Apply</string>
+    <string name="timer_default">03:00</string>
+    <string name="initial_status">Team 1 · Enter the Yut result.</string>
+    <string name="pause_time">Pause</string>
+    <string name="resume_time">Resume</string>
+    <string name="no_time_limit">No limit</string>
+    <string name="unlimited">Unlimited</string>
+    <string name="end_turn">End turn</string>
+    <string name="undo_last">Undo last</string>
+    <string name="info">Info</string>
+    <string name="input">Yut input</string>
+    <string name="drawer_close">Close</string>
+    <string name="info_panel_toggle">Show or hide game information</string>
+    <string name="controls_panel_toggle">Show or hide Yut controls</string>
+    <string name="yut_backdo_steps">Back Do  -1</string>
+    <string name="yut_do_steps">Do  +1</string>
+    <string name="yut_gae_steps">Gae  +2</string>
+    <string name="yut_geol_steps">Geol  +3</string>
+    <string name="yut_yut_steps">Yut  +4</string>
+    <string name="yut_mo_steps">Mo  +5</string>
+    <string name="yut_backdo_description">Back Do, move back 1 space</string>
+    <string name="yut_do_description">Do, move forward 1 space</string>
+    <string name="yut_gae_description">Gae, move forward 2 spaces</string>
+    <string name="yut_geol_description">Geol, move forward 3 spaces</string>
+    <string name="yut_yut_description">Yut, move forward 4 spaces</string>
+    <string name="yut_mo_description">Mo, move forward 5 spaces</string>
+    <string name="team_selection">How many teams are playing?</string>
+    <string name="choose_team_count">Choose a team count to start the game.</string>
+    <string name="start_two_teams">2 teams</string>
+    <string name="start_three_teams">3 teams</string>
+    <string name="start_four_teams">4 teams</string>
+    <string name="team_two_detail">Head-to-head</string>
+    <string name="team_three_detail">Three-team rotation</string>
+    <string name="team_four_detail">Four-team rotation</string>
+    <string name="game_rules">Game rules</string>
+    <string name="game_rules_summary">Turn time: %1$s</string>
+    <string name="game_rules_description">Choose how long each turn lasts.</string>
+    <string name="game_rules_unlimited_note">※ In Unlimited mode, time does not automatically end the turn.</string>
+    <string name="change_game_rules">Change game rules</string>
+    <string name="board_start">START</string>
+    <string name="team_turn">Turn: %1$s</string>
+    <string name="piece_description">%1$s piece %2$d</string>
+    <string name="waiting_piece_description">%1$s waiting piece %2$d</string>
+    <string name="selectable_piece_description">%1$s piece %2$d. Available to move</string>
+    <string name="grouped_piece_description">%1$s stack of %2$d pieces</string>
+    <string name="finished_summary_landscape">%1$s finished %2$d/%3$d</string>
+    <string name="finished_summary_portrait">%1$s %2$d/%3$d</string>
+    <string name="finished_summary_description">%1$s, %2$d of %3$d pieces finished</string>
+    <string name="piece_moving">A piece is moving.</string>
+    <string name="exit_confirm">Press Back again to exit the game.</string>
+    <string name="select_result_first">Select the Yut result to use first.</string>
+    <string name="tap_destination">Tap the glowing destination to move.</string>
+    <string name="destination_description">Destination. Tap to move the piece</string>
+    <string name="roll_status_bonus">%1$s (%2$s) entered · Throw again or choose a piece.</string>
+    <string name="roll_status_move">%1$s (%2$s) entered · Choose a piece to move.</string>
+    <string name="timer_turn_ended">Time is up. Turn: %1$s</string>
+    <string name="history">History</string>
+    <string name="history_none">No history</string>
+    <string name="history_recent_description">Recent history. Up to 200 recent actions.</string>
+    <string name="history_all">Recent history</string>
+    <string name="history_entry_title">History %1$d</string>
+    <string name="history_saved_count">%1$d recent entries are saved.</string>
+    <string name="history_view_all">View recent history</string>
+    <string name="history_clear">Clear history</string>
+    <string name="history_cleared">History cleared.</string>
+    <string name="settings_turn_time">Turn time</string>
+    <string name="settings_feedback">Feedback</string>
+    <string name="settings_sound">Sound effects</string>
+    <string name="settings_vibration">Vibration</string>
+    <string name="settings_saved">Settings saved.</string>
+    <string name="turn_duration_1">1 minute</string>
+    <string name="turn_duration_2">2 minutes</string>
+    <string name="turn_duration_3">3 minutes</string>
+    <string name="turn_duration_5">5 minutes</string>
+    <string name="turn_duration_unlimited">Unlimited</string>
+    <string-array name="turn_duration_labels">
+        <item>@string/turn_duration_1</item>
+        <item>@string/turn_duration_2</item>
+        <item>@string/turn_duration_3</item>
+        <item>@string/turn_duration_5</item>
+        <item>@string/turn_duration_unlimited</item>
+    </string-array>
+    <string name="about">About</string>
+    <string name="privacy_policy">Privacy policy</string>
+    <string name="privacy_policy_body">Yutnori does not collect, transmit, share, or sell personal or device information. Game settings, progress, and history are stored only on this device. The app does not use accounts, advertising, analytics, or third-party tracking. Local data may be removed when the app is uninstalled. For privacy inquiries, contact the developer using the email address shown on the Google Play listing.</string>
+    <string name="game_over_new_game">New game</string>
+    <string name="game_over_view_board">View board</string>
+    <string name="victory_title">%1$s wins!</string>
+    <string name="game_over_summary">All pieces have finished.\n\nWinning team: %1$s\nFinished: %2$d/%3$d\nRecent history: %4$d</string>
+    <string name="game_over_last_actions">\n\nLast actions\n%1$s</string>
+    <string name="log_new_game">%1$s: new game started</string>
+    <string name="log_roll">%1$s: entered %2$s</string>
+    <string name="log_undo_roll">%1$s: undid the last Yut result</string>
+    <string name="log_turn_end">%1$s: turn ended</string>
+    <string name="log_turn_timeout">%1$s: turn ended when time expired</string>
+    <string name="log_move_base">%1$s: %2$s moved with %3$s</string>
+    <string name="log_capture_suffix">, captured %1$d opponent piece(s)</string>
+    <string name="log_finish_suffix">, finished %1$d piece(s)</string>
+    <string name="log_victory_suffix">, victory</string>
+    <string name="log_move_fallback">Move</string>
+    <string name="piece_ids_fallback">Piece</string>
+    <string name="piece_ids">Piece(s) %1$s</string>
+    <string name="log_keyword_victory">victory</string>
+    <string name="log_keyword_finished">finished</string>
+    <string name="log_keyword_captured">captured</string>
+    <string name="log_keyword_moved">moved</string>
+    <string name="log_keyword_undo">undid</string>
+    <string name="log_keyword_turn_end">turn ended</string>
+    <string name="log_keyword_new_game">new game</string>
+    <string name="log_keyword_roll">entered</string>
+    <string name="timer_paused_description">Paused. %1$s remaining</string>
+    <string name="timer_settings_description">Settings open. %1$s remaining</string>
+    <string name="timer_remaining_description">%1$s remaining</string>
+    <string name="update_available_title">A new version is available</string>
+    <string name="update_available_message">Get the latest, more stable version from Google Play.</string>
+    <string name="update_now">Update</string>
+    <string name="update_later">Later</string>
+    <string name="app_version_format">Version %1$s (%2$d)</string>
+    <string name="app_version_update_format">Version %1$s (%2$d) · Check Google Play</string>
+    <string name="check_updates">Check Google Play</string>
+    <string name="saved_game_title">Continue saved game?</string>
+    <string name="saved_game_message">A game from an earlier session is saved on this device. Continue where you left off?</string>
+    <string name="continue_game">Continue</string>
+    <string name="end_turn_pending_title">End turn?</string>
+    <plurals name="end_turn_pending_message">
+        <item quantity="one">There is %1$d unused Yut result. End the turn and discard it?</item>
+        <item quantity="other">There are %1$d unused Yut results. End the turn and discard them?</item>
+    </plurals>
+    <string name="keep_playing">Keep playing</string>
+    <string name="undo_move">Undo move</string>
+    <string name="move_undone">The last move was undone. Choose the piece and destination again.</string>
+    <string name="log_undo_move">%1$s: undid the last move</string>
+    <string name="how_to_play">How to play</string>
+    <string name="how_to_play_body">1. Throw real Yut sticks, then enter the result in the app.\n\n2. Select one or more results in the order you want to use them.\n\n3. Select a piece. Available destinations will glow on the board.\n\n4. Tap the destination marker to move. Pieces on the same spot travel together, and landing on an opponent sends it back to waiting.\n\n5. Yut, Mo, or capturing an opponent grants another throw. Back Do moves a piece back one step and cannot bring a waiting piece onto the board.\n\n6. Use End turn when play is finished. In timed games, reaching zero ends the turn automatically.</string>
+    <string name="play_store_unavailable">Google Play could not be opened.</string>
+    <string name="log_location_suffix"> (%1$s → %2$s)</string>
+    <string name="location_waiting">Waiting area</string>
+    <string name="location_finished">Finished</string>
+    <string name="location_board">Board</string>
+    <string-array name="board_spot_names">
+        <item>Top-right corner</item>
+        <item>Top edge 1 (from right)</item>
+        <item>Top edge 2 (from right)</item>
+        <item>Top edge 3 (from right)</item>
+        <item>Top edge 4 (from right)</item>
+        <item>Top-left corner</item>
+        <item>Left edge 1 (from top)</item>
+        <item>Left edge 2 (from top)</item>
+        <item>Left edge 3 (from top)</item>
+        <item>Left edge 4 (from top)</item>
+        <item>Bottom-left corner</item>
+        <item>Bottom edge 1 (from left)</item>
+        <item>Bottom edge 2 (from left)</item>
+        <item>Bottom edge 3 (from left)</item>
+        <item>Bottom edge 4 (from left)</item>
+        <item>Start corner</item>
+        <item>Right edge 1 (from bottom)</item>
+        <item>Right edge 2 (from bottom)</item>
+        <item>Right edge 3 (from bottom)</item>
+        <item>Right edge 4 (from bottom)</item>
+        <item>Upper-left shortcut, outer</item>
+        <item>Upper-left shortcut, inner</item>
+        <item>Center</item>
+        <item>Lower-right shortcut, inner</item>
+        <item>Lower-right shortcut, outer</item>
+        <item>Lower-left shortcut, outer</item>
+        <item>Lower-left shortcut, inner</item>
+        <item>Upper-right shortcut, inner</item>
+        <item>Upper-right shortcut, outer</item>
+    </string-array>
 </resources>

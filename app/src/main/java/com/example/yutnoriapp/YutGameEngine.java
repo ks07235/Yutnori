@@ -9,8 +9,12 @@ public class YutGameEngine {
     public static final int MAX_TEAM_COUNT = 4;
     public static final int TEAM_COUNT = MAX_TEAM_COUNT;
     public static final int PIECE_COUNT = 4;
+    private static final int INITIAL_NORMAL_ROLL_ALLOWANCE = 1;
+    public static final String WAITING_PIECE_BACK_DO_MESSAGE =
+            "\ub300\uae30 \uc911\uc778 \ub9d0\uc740 \ube7d\ub3c4\ub97c \uc4f8 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4. \ud310 \uc704\uc758 \ub9d0\uc744 \uace0\ub974\uac70\ub098 \ud134\uc744 \uc885\ub8cc\ud558\uc138\uc694.";
 
     private final BoardPath boardPath = new BoardPath();
+    private final GameText text;
     private final Piece[][] pieces = new Piece[MAX_TEAM_COUNT][PIECE_COUNT];
     private final ArrayList<YutResult> pendingResults = new ArrayList<>();
     private final ArrayList<Integer> selectedResultIds = new ArrayList<>();
@@ -19,11 +23,21 @@ public class YutGameEngine {
     private int currentTeam = 0;
     private int nextResultId = 1;
     private boolean rollAllowed = true;
+    private int normalRollAllowance = INITIAL_NORMAL_ROLL_ALLOWANCE;
     private boolean mustRollBeforeMoving = false;
     private boolean catchBonusPending = false;
     private boolean gameOver = false;
 
     public YutGameEngine() {
+        this(GameText.korean());
+    }
+
+    public YutGameEngine(boolean korean) {
+        this(GameText.forLanguage(korean));
+    }
+
+    private YutGameEngine(GameText text) {
+        this.text = text;
         for (int team = 0; team < MAX_TEAM_COUNT; team++) {
             for (int id = 0; id < PIECE_COUNT; id++) {
                 pieces[team][id] = new Piece(team, id);
@@ -33,17 +47,18 @@ public class YutGameEngine {
 
     public ActionResult setTeamCount(int teamCount) {
         if (teamCount < MIN_TEAM_COUNT || teamCount > MAX_TEAM_COUNT) {
-            return ActionResult.failure("\ud300\uc740 2\ud300\ubd80\ud130 4\ud300\uae4c\uc9c0 \uc124\uc815\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.");
+            return ActionResult.failure(text.teamCountRange());
         }
         this.teamCount = teamCount;
         reset();
-        return ActionResult.success(teamCount + "\ud300 \uac8c\uc784\uc744 \uc2dc\uc791\ud569\ub2c8\ub2e4.");
+        return ActionResult.success(text.gameStarted(teamCount));
     }
 
     public void reset() {
         currentTeam = 0;
         nextResultId = 1;
-        rollAllowed = true;
+        normalRollAllowance = INITIAL_NORMAL_ROLL_ALLOWANCE;
+        rollAllowed = normalRollAllowance > 0;
         mustRollBeforeMoving = false;
         catchBonusPending = false;
         gameOver = false;
@@ -59,66 +74,76 @@ public class YutGameEngine {
 
     public ActionResult addRoll(int steps) {
         if (gameOver) {
-            return ActionResult.failure("\uac8c\uc784\uc774 \ub05d\ub0ac\uc2b5\ub2c8\ub2e4. \uc0c8 \uac8c\uc784\uc744 \ub20c\ub7ec\uc8fc\uc138\uc694.");
+            return ActionResult.failure(text.gameEnded());
         }
         if (!isValidResult(steps)) {
-            return ActionResult.failure("\uc54c \uc218 \uc5c6\ub294 \uc737 \uacb0\uacfc\uc785\ub2c8\ub2e4.");
+            return ActionResult.failure(text.unknownResult());
+        }
+        if (!isBonusRoll(steps) && normalRollAllowance <= 0) {
+            return ActionResult.failure(text.normalRollLimit());
+        }
+
+        if (!isBonusRoll(steps)) {
+            normalRollAllowance--;
         }
         pendingResults.add(new YutResult(nextResultId++, steps));
         selectedResultIds.clear();
         mustRollBeforeMoving = false;
-        rollAllowed = isBonusRoll(steps);
+        rollAllowed = normalRollAllowance > 0;
 
         if (rollAllowed) {
-            return ActionResult.success(getResultName(steps) + "\uc774 \ub098\uc654\uc2b5\ub2c8\ub2e4. \ud55c \ubc88 \ub354 \ub358\uc9c8 \uc218 \uc788\uc2b5\ub2c8\ub2e4.");
+            return ActionResult.success(text.rollWithBonus(steps));
         }
-        return ActionResult.success(getResultName(steps) + "\uc774 \ub098\uc654\uc2b5\ub2c8\ub2e4. \uc0ac\uc6a9\ud560 \uacb0\uacfc\ub97c \uc120\ud0dd\ud558\uc138\uc694.");
+        return ActionResult.success(text.rollAndSelect(steps));
     }
 
     public ActionResult undoLastRoll() {
         if (gameOver) {
-            return ActionResult.failure("\uac8c\uc784\uc774 \ub05d\ub0ac\uc2b5\ub2c8\ub2e4. \uc0c8 \uac8c\uc784\uc744 \ub20c\ub7ec\uc8fc\uc138\uc694.");
+            return ActionResult.failure(text.gameEnded());
         }
         if (pendingResults.isEmpty()) {
-            return ActionResult.failure("\ucde8\uc18c\ud560 \uc737 \uacb0\uacfc\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.");
+            return ActionResult.failure(text.noRollToUndo());
         }
 
         YutResult removed = pendingResults.remove(pendingResults.size() - 1);
         selectedResultIds.remove(Integer.valueOf(removed.id));
+        if (!isBonusRoll(removed.steps)) {
+            normalRollAllowance++;
+        }
+        rollAllowed = normalRollAllowance > 0;
         if (pendingResults.isEmpty()) {
-            rollAllowed = true;
             mustRollBeforeMoving = catchBonusPending;
         } else {
-            rollAllowed = isBonusRoll(pendingResults.get(pendingResults.size() - 1).steps);
             mustRollBeforeMoving = false;
         }
-        return ActionResult.success("\ub9c8\uc9c0\ub9c9 \uc737 \uacb0\uacfc\ub97c \ucde8\uc18c\ud588\uc2b5\ub2c8\ub2e4.");
+        return ActionResult.success(text.lastRollUndone());
     }
 
     public ActionResult endTurn() {
         if (gameOver) {
-            return ActionResult.failure("\uac8c\uc784\uc774 \ub05d\ub0ac\uc2b5\ub2c8\ub2e4. \uc0c8 \uac8c\uc784\uc744 \ub20c\ub7ec\uc8fc\uc138\uc694.");
+            return ActionResult.failure(text.gameEnded());
         }
 
         pendingResults.clear();
         selectedResultIds.clear();
         rollAllowed = true;
+        normalRollAllowance = INITIAL_NORMAL_ROLL_ALLOWANCE;
         mustRollBeforeMoving = false;
         catchBonusPending = false;
         currentTeam = getNextTeam();
-        return ActionResult.success(getTeamName(currentTeam) + " \ucc28\ub840\uc785\ub2c8\ub2e4.");
+        return ActionResult.success(text.teamTurn(currentTeam));
     }
 
     public ActionResult selectResult(int choiceIndex) {
         if (gameOver) {
-            return ActionResult.failure("\uac8c\uc784\uc774 \ub05d\ub0ac\uc2b5\ub2c8\ub2e4. \uc0c8 \uac8c\uc784\uc744 \ub20c\ub7ec\uc8fc\uc138\uc694.");
+            return ActionResult.failure(text.gameEnded());
         }
         if (mustRollBeforeMoving) {
-            return ActionResult.failure("\uc0c1\ub300 \ub9d0\uc744 \uc7a1\uc558\uc2b5\ub2c8\ub2e4. \uc737\uc744 \uba3c\uc800 \ud55c \ubc88 \ub354 \uad74\ub824\uc57c \ud569\ub2c8\ub2e4.");
+            return ActionResult.failure(text.captureBonusRollFirst());
         }
         List<MoveChoice> choices = getMoveChoices();
         if (choiceIndex < 0 || choiceIndex >= choices.size()) {
-            return ActionResult.failure("\uc120\ud0dd\ud560 \uc218 \uc5c6\ub294 \uc737 \uacb0\uacfc\uc785\ub2c8\ub2e4.");
+            return ActionResult.failure(text.unavailableResult());
         }
 
         int resultId = choices.get(choiceIndex).resultId;
@@ -129,39 +154,42 @@ public class YutGameEngine {
         }
 
         if (selectedResultIds.isEmpty()) {
-            return ActionResult.success("\uc0ac\uc6a9\ud560 \uc737 \uacb0\uacfc\ub97c \uc21c\uc11c\ub300\ub85c \uc120\ud0dd\ud558\uc138\uc694.");
+            return ActionResult.success(text.selectResultsInOrder());
         }
-        return ActionResult.success(getSelectedPlanText() + " \uc21c\uc11c\ub85c \uc6c0\uc9c1\uc77c \ub9d0\uc744 \uace0\ub974\uc138\uc694.");
+        return ActionResult.success(text.choosePieceForPlan(getSelectedPlanText()));
     }
 
     public MoveResult moveSelectedPiece(int teamId, int pieceId) {
         if (gameOver) {
-            return MoveResult.failure("\uac8c\uc784\uc774 \ub05d\ub0ac\uc2b5\ub2c8\ub2e4. \uc0c8 \uac8c\uc784\uc744 \ub20c\ub7ec\uc8fc\uc138\uc694.");
+            return MoveResult.failure(text.gameEnded());
         }
         if (teamId < 0 || teamId >= teamCount) {
-            return MoveResult.failure("\ucc38\uac00\ud558\uc9c0 \uc54a\ub294 \ud300\uc785\ub2c8\ub2e4.");
+            return MoveResult.failure(text.nonParticipatingTeam());
         }
         if (teamId != currentTeam) {
-            return MoveResult.failure("\uc9c0\uae08\uc740 " + getTeamName(currentTeam) + " \ucc28\ub840\uc785\ub2c8\ub2e4.");
+            return MoveResult.failure(text.wrongTeam(currentTeam));
         }
         if (pieceId < 0 || pieceId >= PIECE_COUNT) {
-            return MoveResult.failure("\uc120\ud0dd\ud560 \uc218 \uc5c6\ub294 \ub9d0\uc785\ub2c8\ub2e4.");
+            return MoveResult.failure(text.invalidPiece());
         }
         Piece selectedPiece = pieces[teamId][pieceId];
         if (selectedPiece.isFinished) {
-            return MoveResult.failure("\uc774\ubbf8 \uc644\uc8fc\ud55c \ub9d0\uc785\ub2c8\ub2e4.");
+            return MoveResult.failure(text.alreadyFinished());
         }
         if (mustRollBeforeMoving) {
-            return MoveResult.failure("\uc737\uc744 \uba3c\uc800 \ud55c \ubc88 \ub354 \uad74\ub824\uc57c \ud569\ub2c8\ub2e4.");
+            return MoveResult.failure(text.rollFirst());
         }
         if (selectedResultIds.isEmpty()) {
-            return MoveResult.failure("\uc0ac\uc6a9\ud560 \uc737 \uacb0\uacfc\ub97c \uba3c\uc800 \uc120\ud0dd\ud558\uc138\uc694.");
+            return MoveResult.failure(text.selectResultFirst());
         }
 
         ArrayList<YutResult> plan = getSelectedResultsInOrder();
         if (plan.isEmpty()) {
             selectedResultIds.clear();
-            return MoveResult.failure("\uc120\ud0dd\ud55c \uc737 \uacb0\uacfc\ub97c \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4. \ub2e4\uc2dc \uc120\ud0dd\ud558\uc138\uc694.");
+            return MoveResult.failure(text.selectedResultsMissing());
+        }
+        if (!previewMove(teamId, pieceId).available) {
+            return MoveResult.failure(text.waitingPieceBackDo());
         }
 
         MoveResult result = MoveResult.success(teamId, sumSteps(plan));
@@ -199,6 +227,10 @@ public class YutGameEngine {
                 addUnique(result.movedPieceIds, id);
             }
 
+            alignFriendlyPiecesAtTarget(teamId, trace.node, trace.route);
+            animation.arrivedPieceIds.clear();
+            animation.arrivedPieceIds.addAll(findGroupedPieces(teamId, trace.node, pieceId));
+
             for (int opponentTeam = 0; opponentTeam < teamCount; opponentTeam++) {
                 if (opponentTeam == currentTeam) {
                     continue;
@@ -207,7 +239,7 @@ public class YutGameEngine {
                     Piece opponent = pieces[opponentTeam][id];
                     if (!opponent.isFinished
                             && opponent.position != BoardPath.START_NODE
-                            && opponent.position == trace.node) {
+                            && boardPath.isSameBoardSpot(opponent.position, trace.node)) {
                         opponent.reset();
                         PieceRef caughtPiece = new PieceRef(opponentTeam, id);
                         result.caughtPieces.add(caughtPiece);
@@ -223,19 +255,21 @@ public class YutGameEngine {
         if (finishedDuringPlan && hasTeamWon(teamId)) {
             gameOver = true;
             rollAllowed = false;
+            normalRollAllowance = 0;
             pendingResults.clear();
             catchBonusPending = false;
             result.gameWon = true;
-            result.message = getTeamName(teamId) + " \uc2b9\ub9ac!";
+            result.message = text.victory(teamId);
             return result;
         }
 
         if (!result.caughtPieces.isEmpty()) {
+            normalRollAllowance += result.captureEventCount();
             rollAllowed = true;
             mustRollBeforeMoving = true;
             catchBonusPending = true;
             result.caught = true;
-            result.message = "\uc0c1\ub300 \ub9d0\uc744 \uc7a1\uc558\uc2b5\ub2c8\ub2e4. \uc737\uc744 \ud55c \ubc88 \ub354 \ub358\uc9c0\uc138\uc694.";
+            result.message = text.capturedBonus();
             return result;
         }
 
@@ -245,20 +279,22 @@ public class YutGameEngine {
     }
 
     private void finishTurnAfterMove(MoveResult result) {
-        if (pendingResults.isEmpty() && !rollAllowed) {
+        rollAllowed = normalRollAllowance > 0;
+        if (pendingResults.isEmpty() && normalRollAllowance <= 0) {
             currentTeam = getNextTeam();
+            normalRollAllowance = INITIAL_NORMAL_ROLL_ALLOWANCE;
             rollAllowed = true;
             result.turnChanged = true;
-            result.message = getTeamName(currentTeam) + " \ucc28\ub840\uc785\ub2c8\ub2e4.";
+            result.message = text.teamTurn(currentTeam);
             return;
         }
 
         if (pendingResults.isEmpty()) {
-            result.message = "\uc737\uc744 \ub354 \ub358\uc9c8 \uc218 \uc788\uc2b5\ub2c8\ub2e4.";
-        } else if (rollAllowed) {
-            result.message = "\uc737\uc744 \ub354 \ub358\uc9c0\uac70\ub098 \ub0a8\uc740 \uacb0\uacfc\ub97c \uc120\ud0dd\ud558\uc138\uc694.";
+            result.message = text.canRollMore();
+        } else if (normalRollAllowance > 0) {
+            result.message = text.rollOrSelectRemaining();
         } else {
-            result.message = "\ub0a8\uc740 \uacb0\uacfc\ub97c \uc120\ud0dd\ud558\uc138\uc694.";
+            result.message = text.selectRemaining();
         }
     }
 
@@ -271,11 +307,23 @@ public class YutGameEngine {
 
         for (int id = 0; id < PIECE_COUNT; id++) {
             Piece piece = pieces[teamId][id];
-            if (!piece.isFinished && piece.position == originalPosition) {
+            if (!piece.isFinished && boardPath.isSameBoardSpot(piece.position, originalPosition)) {
                 grouped.add(id);
             }
         }
         return grouped;
+    }
+
+    private void alignFriendlyPiecesAtTarget(int teamId, int targetNode, int targetRoute) {
+        for (int id = 0; id < PIECE_COUNT; id++) {
+            Piece piece = pieces[teamId][id];
+            if (!piece.isFinished
+                    && piece.position != BoardPath.START_NODE
+                    && boardPath.isSameBoardSpot(piece.position, targetNode)) {
+                piece.position = targetNode;
+                piece.route = targetRoute;
+            }
+        }
     }
 
     private boolean hasTeamWon(int teamId) {
@@ -297,6 +345,19 @@ public class YutGameEngine {
 
     private boolean isBonusRoll(int steps) {
         return steps == 4 || steps == 5;
+    }
+
+    private int deriveNormalRollAllowance(boolean restoredRollAllowed) {
+        for (YutResult result : pendingResults) {
+            if (!isBonusRoll(result.steps)) {
+                return 0;
+            }
+        }
+        return restoredRollAllowed ? INITIAL_NORMAL_ROLL_ALLOWANCE : 0;
+    }
+
+    public boolean canAddRoll(int steps) {
+        return !gameOver && isValidResult(steps) && (isBonusRoll(steps) || normalRollAllowance > 0);
     }
 
     public Piece[][] getPieces() {
@@ -322,7 +383,7 @@ public class YutGameEngine {
     public List<MoveChoice> getMoveChoices() {
         ArrayList<MoveChoice> choices = new ArrayList<>();
         for (YutResult result : pendingResults) {
-            String name = getResultName(result.steps);
+            String name = text.resultName(result.steps);
             int selectionOrder = getSelectionOrder(result.id);
             String label = selectionOrder > 0 ? selectionOrder + ". " + name : name;
             choices.add(new MoveChoice(result.id, result.steps, name, label, selectionOrder));
@@ -353,6 +414,11 @@ public class YutGameEngine {
             return MovePreview.unavailable();
         }
 
+        ArrayList<YutResult> plan = getSelectedResultsInOrder();
+        if (plan.isEmpty()) {
+            return MovePreview.unavailable();
+        }
+
         Piece simulated = new Piece(teamId, pieceId);
         simulated.position = original.position;
         simulated.route = original.route;
@@ -360,13 +426,19 @@ public class YutGameEngine {
 
         int targetNode = simulated.position;
         int stepsUsed = 0;
-        for (YutResult result : getSelectedResultsInOrder()) {
-            BoardPath.MoveTarget target = boardPath.calculate(simulated, result.steps);
-            targetNode = target.node;
-            simulated.position = target.node;
-            simulated.route = target.route;
+        for (YutResult result : plan) {
+            BoardPath.MoveTrace trace = boardPath.trace(simulated, result.steps);
+            if (trace.visitedNodes.isEmpty()
+                    && trace.node == simulated.position
+                    && trace.route == simulated.route) {
+                return MovePreview.unavailable();
+            }
+
+            targetNode = trace.node;
+            simulated.position = trace.node;
+            simulated.route = trace.route;
             stepsUsed += 1;
-            if (target.node == BoardPath.END_NODE) {
+            if (trace.node == BoardPath.END_NODE) {
                 return new MovePreview(true, true, targetNode, stepsUsed);
             }
         }
@@ -399,6 +471,10 @@ public class YutGameEngine {
         return rollAllowed;
     }
 
+    public int getNormalRollAllowance() {
+        return normalRollAllowance;
+    }
+
     public SavedState saveState() {
         SavedState state = new SavedState();
         state.teamCount = teamCount;
@@ -406,6 +482,7 @@ public class YutGameEngine {
         state.nextResultId = nextResultId;
         state.rollAllowed = rollAllowed;
         state.mustRollBeforeMoving = mustRollBeforeMoving;
+        state.normalRollAllowance = normalRollAllowance;
         state.catchBonusPending = catchBonusPending;
         state.gameOver = gameOver;
 
@@ -447,7 +524,7 @@ public class YutGameEngine {
         teamCount = clamp(state.teamCount, MIN_TEAM_COUNT, MAX_TEAM_COUNT);
         currentTeam = clamp(state.currentTeam, 0, teamCount - 1);
         nextResultId = Math.max(1, state.nextResultId);
-        rollAllowed = state.rollAllowed;
+        boolean restoredRollAllowed = state.rollAllowed;
         mustRollBeforeMoving = state.mustRollBeforeMoving;
         catchBonusPending = state.catchBonusPending;
         gameOver = state.gameOver;
@@ -466,6 +543,11 @@ public class YutGameEngine {
         nextResultId = Math.max(nextResultId, highestResultId + 1);
 
         selectedResultIds.clear();
+        normalRollAllowance = state.normalRollAllowance >= 0
+                ? clamp(state.normalRollAllowance, 0, MAX_TEAM_COUNT * PIECE_COUNT)
+                : deriveNormalRollAllowance(restoredRollAllowed);
+        rollAllowed = normalRollAllowance > 0;
+
         for (int i = 0; i < lengthOf(state.selectedResultIds); i++) {
             int resultId = state.selectedResultIds[i];
             if (findPendingResult(resultId) != null && !selectedResultIds.contains(resultId)) {
@@ -502,6 +584,10 @@ public class YutGameEngine {
 
     public int visualSpotFor(int logicalNode) {
         return boardPath.visualSpotFor(logicalNode);
+    }
+
+    public boolean isSameBoardSpot(int firstNode, int secondNode) {
+        return boardPath.isSameBoardSpot(firstNode, secondNode);
     }
 
     private int pieceIndex(int teamId, int pieceId) {
@@ -563,7 +649,7 @@ public class YutGameEngine {
     private String getSelectedPlanText() {
         ArrayList<String> names = new ArrayList<>();
         for (YutResult result : getSelectedResultsInOrder()) {
-            names.add(getResultName(result.steps));
+            names.add(text.resultName(result.steps));
         }
         return String.join(" \u2192 ", names);
     }
@@ -588,6 +674,17 @@ public class YutGameEngine {
         }
     }
 
+    public String getLocalizedResultName(int steps) {
+        return text.resultName(steps);
+    }
+
+    public String getLocalizedTeamName(int teamId) {
+        return text.teamName(teamId);
+    }
+
+    public String getWaitingPieceBackDoMessage() {
+        return text.waitingPieceBackDo();
+    }
     public static String getResultName(int steps) {
         switch (steps) {
             case -1:
@@ -636,6 +733,7 @@ public class YutGameEngine {
         public boolean rollAllowed;
         public boolean mustRollBeforeMoving;
         public boolean catchBonusPending;
+        public int normalRollAllowance = -1;
         public boolean gameOver;
         public int[] pendingIds;
         public int[] pendingSteps;
@@ -690,6 +788,14 @@ public class YutGameEngine {
     }
 
     public static class MoveResult {
+        public int captureEventCount() {
+            int count = 0;
+            for (MoveAnimation segment : animationSegments) {
+                if (!segment.caughtPieces.isEmpty()) count++;
+            }
+            return count;
+        }
+
         public final boolean success;
         public final int teamId;
         public final int steps;
@@ -734,12 +840,14 @@ public class YutGameEngine {
 
     public static class MoveAnimation {
         public final ArrayList<Integer> pieceIds = new ArrayList<>();
+        public final ArrayList<Integer> arrivedPieceIds = new ArrayList<>();
         public final ArrayList<PieceRef> caughtPieces = new ArrayList<>();
         public final int startNode;
         public final ArrayList<Integer> path = new ArrayList<>();
 
         MoveAnimation(List<Integer> pieceIds, int startNode, List<Integer> path) {
             this.pieceIds.addAll(pieceIds);
+            this.arrivedPieceIds.addAll(pieceIds);
             this.startNode = startNode;
             this.path.addAll(path);
         }

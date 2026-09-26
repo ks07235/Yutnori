@@ -1,17 +1,32 @@
 package com.example.yutnoriapp;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 import android.content.res.Configuration;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
+import android.text.SpannableStringBuilder;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.RelativeSizeSpan;
+import android.text.style.StyleSpan;
+import android.transition.AutoTransition;
+import android.transition.TransitionManager;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowManager;
 import android.view.animation.AccelerateDecelerateInterpolator;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -20,6 +35,14 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.constraintlayout.widget.ConstraintSet;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.core.widget.TextViewCompat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -28,22 +51,29 @@ public class MainActivity extends AppCompatActivity {
     private static final long BONUS_TURN_MILLIS = 30_000L;
     private static final long TIMER_TICK_MILLIS = 1_000L;
     private static final long BACK_EXIT_INTERVAL_MILLIS = 1_800L;
-    private static final int MAX_TURN_LOG_ENTRIES = 12;
+    private static final int MAX_TURN_LOG_ENTRIES = 200;
+    private static final long UPDATE_CHECK_DELAY_MILLIS = 900L;
+    private static final long UPDATE_RECHECK_INTERVAL_MILLIS = 10L * 60L * 1_000L;
 
-    private final YutGameEngine game = new YutGameEngine();
+
+    private final YutGameEngine game = new YutGameEngine(isKoreanLanguage());
     private GameStateStore stateStore;
     private GameFeedback feedback;
 
-    private TextView[][] pieceViews;
+    private AppUpdateChecker appUpdateChecker;
+    private PieceStackView[][] pieceViews;
     private FrameLayout[][] waitSpots;
-    private LinearLayout[] finishedLayouts;
+    private TextView[] finishedCountViews;
     private FrameLayout boardContainer;
+    private BoardOverlayLayout boardOverlay;
+    private View boardArt;
     private View topPanel;
     private View controlPanel;
     private View btnToggleInfo;
     private View btnToggleControls;
     private TextView textStatus;
     private TextView textTimer;
+    private TextView textSetupRuleSummary;
     private LinearLayout actionLogRail;
     private TextView btnTimeStop;
     private LinearLayout resultLayout;
@@ -51,6 +81,7 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout waitingArea;
     private View setupPanel;
     private final ArrayList<View> previewViews = new ArrayList<>();
+    private final ArrayList<View> pieceGuideViews = new ArrayList<>();
     private final ArrayList<String> turnLog = new ArrayList<>();
     private final Handler timerHandler = new Handler(Looper.getMainLooper());
     private final Runnable timerTick = new Runnable() {
@@ -59,19 +90,20 @@ public class MainActivity extends AppCompatActivity {
             if (shouldTimerRun()) {
                 syncTimerToNow();
                 updateTimerView();
-                if (remainingTurnMillis == 0L && !timeExpiredNotified) {
-                    timeExpiredNotified = true;
-                    textStatus.setText("\uc2dc\uac04\uc774 \uc885\ub8cc\ub410\uc2b5\ub2c8\ub2e4. \ud134 \uc885\ub8cc\ub97c \ub20c\ub7ec \ub2e4\uc74c \ud300\uc73c\ub85c \ub118\uae30\uc138\uc694.");
-                    textStatus.setTextColor(getResources().getColor(R.color.btn_restart));
-                    persistGameState();
-                }
+                finishTurnAfterTimeout();
             }
             timerHandler.postDelayed(this, TIMER_TICK_MILLIS);
         }
     };
     private int selectedPreviewTeamId = -1;
+    private final Runnable updateCheckRunnable = this::checkForAppUpdate;
     private int selectedPreviewPieceId = -1;
     private boolean isAnimatingMove = false;
+    private boolean isActivityResumed = false;
+    private boolean gameOverDialogVisible = false;
+    private boolean victoryPending = false;
+    private int bonusTimeBaselineResultId = 0;
+    private final ArrayList<Animator> moveAnimators = new ArrayList<>();
     private long turnDurationMillis = GameStateStore.DEFAULT_TURN_DURATION_MILLIS;
     private long remainingTurnMillis = GameStateStore.DEFAULT_TURN_DURATION_MILLIS;
     private long lastBackPressMillis = 0L;
@@ -79,28 +111,49 @@ public class MainActivity extends AppCompatActivity {
     private boolean isTimerHeldForAnimation = false;
     private int timerDialogHoldCount = 0;
     private boolean timeExpiredNotified = false;
-    private long timerCheckpointEpochMillis = 0L;
+    private long timerCheckpointElapsedMillis = 0L;
     private boolean gameStarted = false;
-    private boolean landscapeInfoOpen = false;
-    private boolean landscapeControlsOpen = true;
+    private boolean infoPanelOpen = false;
+    private boolean controlsPanelOpen = true;
+    private boolean edgePanelTransitionRunning = false;
+    private int edgePanelTransitionGeneration = 0;
     private String restoredStatusMessage = "";
     private int restoredStatusColor = Color.TRANSPARENT;
     private int layoutGeneration = 0;
+    private int boardLayoutRefreshGeneration = 0;
+    private int movePreviewGeneration = 0;
+    private int pieceGuideGeneration = 0;
+
+    private int pendingUpdateVersionCode = -1;
+    private boolean updateDialogVisible = false;
+    private boolean savedGameChoiceVisible = false;
+    private boolean savedGameChoicePending = false;
+    private long lastUpdateCheckElapsedMillis = Long.MIN_VALUE;
+    private long restoredGameSavedAtEpochMillis = 0L;
+    private GameStateStore.MoveUndoState moveUndoState;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        configureEdgeToEdgeWindow();
         stateStore = new GameStateStore(this);
         feedback = new GameFeedback(this);
         loadSettings();
+        appUpdateChecker = new AppUpdateChecker(this);
         setContentView(R.layout.activity_main);
         bindViewsAndActions();
         bindBackExitHandler();
-        if (restorePersistedGameState()) {
+        boolean restoredGame = restorePersistedGameState();
+        if (restoredGame) {
             restoreGameScreen(restoredStatusMessage, restoredStatusColor);
         } else {
             showTeamSetup();
+        }
+        savedGameChoicePending = restoredGame && GameStateStore.shouldConfirmSavedGame(
+                restoredGameSavedAtEpochMillis,
+                System.currentTimeMillis());
+        if (savedGameChoicePending) {
+            timerHandler.post(this::showSavedGameChoice);
         }
         timerHandler.post(timerTick);
         enterImmersiveMode();
@@ -108,8 +161,13 @@ public class MainActivity extends AppCompatActivity {
 
     private void bindViewsAndActions() {
         layoutGeneration++;
+        boardLayoutRefreshGeneration++;
+        movePreviewGeneration++;
+        edgePanelTransitionGeneration++;
+        edgePanelTransitionRunning = false;
         textStatus = findViewById(R.id.text_status);
         textTimer = findViewById(R.id.text_timer);
+        textSetupRuleSummary = findViewById(R.id.text_setup_rule_summary);
         actionLogRail = findViewById(R.id.action_log_rail);
         if (actionLogRail != null) {
             actionLogRail.setOnClickListener(v -> showTurnLogDialog());
@@ -119,6 +177,9 @@ public class MainActivity extends AppCompatActivity {
         btnTimeStop = findViewById(R.id.btn_time_stop);
         topPanel = findViewById(R.id.top_panel);
         boardContainer = findViewById(R.id.board_container);
+        boardArt = findViewById(R.id.board_art);
+        boardOverlay = findViewById(R.id.board_overlay);
+        bindBoardResizeListener();
         controlPanel = findViewById(R.id.control_panel);
         btnToggleInfo = findViewById(R.id.btn_toggle_info);
         btnToggleControls = findViewById(R.id.btn_toggle_controls);
@@ -127,33 +188,47 @@ public class MainActivity extends AppCompatActivity {
         waitingArea = findViewById(R.id.waiting_area);
         setupPanel = findViewById(R.id.setup_panel);
 
-        pieceViews = new TextView[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
+        pieceViews = new PieceStackView[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
         waitSpots = new FrameLayout[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
-        finishedLayouts = new LinearLayout[YutGameEngine.MAX_TEAM_COUNT];
+        finishedCountViews = new TextView[YutGameEngine.MAX_TEAM_COUNT];
 
         createPieceViews();
         bindYutButtons();
         bindTeamSetupButtons();
-        bindLandscapeDrawerButtons();
+        updateSetupRuleSummary();
+        bindEdgePanelButtons();
         applyButtonContrast();
+        applyResponsiveSizing();
+        applyCompactActionAutoSizing();
+        applyFontScaleSizing();
+        bindSafeAreaInsets();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        isActivityResumed = true;
         // Leaving the app pauses a physical-board game automatically.
-        timerCheckpointEpochMillis = System.currentTimeMillis();
+        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         updateTimerView();
         timerHandler.removeCallbacks(timerTick);
         timerHandler.post(timerTick);
         enterImmersiveMode();
+        maybeShowPendingUpdate();
+        timerHandler.removeCallbacks(updateCheckRunnable);
+        timerHandler.postDelayed(updateCheckRunnable, UPDATE_CHECK_DELAY_MILLIS);
+        maybeShowVictory();
     }
 
     @Override
     protected void onPause() {
         syncTimerToNow();
+        isActivityResumed = false;
+        cancelMovePresentation(true);
         persistGameState();
+        getWindow().getDecorView().setKeepScreenOn(false);
         timerHandler.removeCallbacks(timerTick);
+        timerHandler.removeCallbacks(updateCheckRunnable);
         super.onPause();
     }
 
@@ -174,11 +249,15 @@ public class MainActivity extends AppCompatActivity {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
             enterImmersiveMode();
+            maybeShowPendingUpdate();
         }
     }
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
+        syncTimerToNow();
+        boolean wasAnimatingMove = isAnimatingMove;
+        cancelMovePresentation(false);
         String statusMessage = textStatus == null
                 ? ""
                 : textStatus.getText().toString();
@@ -192,16 +271,20 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         bindViewsAndActions();
         if (wasGameStarted) {
-            restoreGameScreen(statusMessage, statusColor);
+            restoreGameScreen(statusMessage, statusColor, wasAnimatingMove);
         } else {
             showTeamSetup();
         }
         enterImmersiveMode();
+        boardOverlay.post(this::maybeShowVictory);
     }
 
     @Override
     protected void onDestroy() {
+        isActivityResumed = false;
+        cancelMovePresentation(false);
         timerHandler.removeCallbacks(timerTick);
+        timerHandler.removeCallbacks(updateCheckRunnable);
         if (feedback != null) {
             feedback.release();
         }
@@ -211,14 +294,10 @@ public class MainActivity extends AppCompatActivity {
     private void createPieceViews() {
         for (int team = 0; team < YutGameEngine.TEAM_COUNT; team++) {
             for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                TextView view = new TextView(this);
-                view.setGravity(Gravity.CENTER);
-                view.setText(String.valueOf(id + 1));
-                view.setTextColor(Color.WHITE);
-                view.setTextSize(14);
-                view.setTypeface(Typeface.DEFAULT_BOLD);
-                view.setBackground(createPieceDrawable(team));
+                PieceStackView view = new PieceStackView(this);
+                view.configure(getResources().getColor(getTeamBrightColorRes(team)), getTeamColor(team), id + 1);
                 view.setElevation(dp(7));
+                view.setContentDescription(getString(R.string.piece_description, teamName(team), id + 1));
 
                 final int teamIndex = team;
                 final int pieceIndex = id;
@@ -235,34 +314,179 @@ public class MainActivity extends AppCompatActivity {
         bindPressAction(R.id.btn_geol, () -> handleYutInput(3));
         bindPressAction(R.id.btn_yut, () -> handleYutInput(4));
         bindPressAction(R.id.btn_mo, () -> handleYutInput(5));
-        bindPressAction(R.id.btn_undo_roll, this::undoLastRoll);
-        bindPressAction(R.id.btn_end_turn, this::endCurrentTurn);
+        bindPressAction(R.id.btn_undo_roll, this::undoLastAction);
+        bindPressAction(R.id.btn_end_turn, this::requestEndCurrentTurn);
         bindPressAction(R.id.btn_time_stop, this::toggleTimeStop);
         bindPressAction(R.id.btn_settings, this::showSettingsDialog);
-        bindPressAction(R.id.btn_setup_settings, this::showSettingsDialog);
+        bindPressAction(R.id.btn_setup_rules, this::showGameRulesDialog);
+        bindPressAction(R.id.btn_setup_help, this::showHowToPlayDialog);
         bindPressAction(R.id.btn_restart, this::requestNewGame);
+
+        setContentDescriptionIfPresent(R.id.btn_bdo, getString(R.string.yut_backdo_description));
+        setContentDescriptionIfPresent(R.id.btn_do, getString(R.string.yut_do_description));
+        setContentDescriptionIfPresent(R.id.btn_gae, getString(R.string.yut_gae_description));
+        setContentDescriptionIfPresent(R.id.btn_geol, getString(R.string.yut_geol_description));
+        setContentDescriptionIfPresent(R.id.btn_yut, getString(R.string.yut_yut_description));
+        setContentDescriptionIfPresent(R.id.btn_mo, getString(R.string.yut_mo_description));
     }
 
     private void bindTeamSetupButtons() {
         bindPressAction(R.id.btn_team_2, () -> startGame(2));
         bindPressAction(R.id.btn_team_3, () -> startGame(3));
         bindPressAction(R.id.btn_team_4, () -> startGame(4));
+        configureTeamSetupButton(R.id.btn_team_2, R.string.team_two_detail, R.drawable.ic_teams_2);
+        configureTeamSetupButton(R.id.btn_team_3, R.string.team_three_detail, R.drawable.ic_teams_3);
+        configureTeamSetupButton(R.id.btn_team_4, R.string.team_four_detail, R.drawable.ic_teams_4);
+        TextView versionButton = findViewById(R.id.btn_setup_version);
+        if (versionButton != null) {
+            versionButton.setText(getString(
+                    R.string.app_version_update_format,
+                    BuildConfig.VERSION_NAME,
+                    BuildConfig.VERSION_CODE));
+            bindPressAction(R.id.btn_setup_version, this::openPlayStoreListing);
+        }
     }
 
-    private void bindLandscapeDrawerButtons() {
-        if (!hasLandscapeDrawers()) {
+    private void configureTeamSetupButton(int buttonId, int detailResId, int iconResId) {
+        Button button = findViewById(buttonId);
+        if (button == null) {
             return;
         }
-        bindPressAction(R.id.btn_toggle_info, () -> {
-            landscapeInfoOpen = !landscapeInfoOpen;
-            applyLandscapeDrawerState(true);
-        });
-        bindPressAction(R.id.btn_toggle_controls, () -> {
-            landscapeControlsOpen = !landscapeControlsOpen;
-            applyLandscapeDrawerState(true);
-        });
+
+        String title = button.getText().toString();
+        String detail = getString(detailResId);
+        SpannableStringBuilder label = new SpannableStringBuilder(title)
+                .append('\n')
+                .append(detail);
+        int detailStart = title.length() + 1;
+        label.setSpan(
+                new RelativeSizeSpan(0.74f),
+                detailStart,
+                label.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        label.setSpan(
+                new ForegroundColorSpan(getResources().getColor(R.color.text_secondary)),
+                detailStart,
+                label.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        label.setSpan(
+                new StyleSpan(Typeface.NORMAL),
+                detailStart,
+                label.length(),
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        button.setText(label);
+        button.setCompoundDrawablesRelativeWithIntrinsicBounds(iconResId, 0, 0, 0);
+        button.setContentDescription(title + ". " + detail);
+    }
+    private void checkForAppUpdate() {
+        if (appUpdateChecker == null || isFinishing() || isDestroyed()) {
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (lastUpdateCheckElapsedMillis != Long.MIN_VALUE
+                && now - lastUpdateCheckElapsedMillis < UPDATE_RECHECK_INTERVAL_MILLIS) {
+            return;
+        }
+        lastUpdateCheckElapsedMillis = now;
+        try {
+            appUpdateChecker.check(availableVersionCode -> {
+                pendingUpdateVersionCode = availableVersionCode;
+                maybeShowPendingUpdate();
+            });
+        } catch (RuntimeException ignored) {
+            // Update checks must never block local play on devices without Google Play.
+        }
     }
 
+    private void maybeShowPendingUpdate() {
+        if (pendingUpdateVersionCode <= BuildConfig.VERSION_CODE
+                || updateDialogVisible
+                || timerDialogHoldCount > 0
+                || isAnimatingMove
+                || !hasWindowFocus()
+                || isFinishing()
+                || isDestroyed()) {
+            return;
+        }
+
+        updateDialogVisible = true;
+        beginTimerDialogHold();
+        try {
+            YutDialogs.showUpdateAvailable(
+                    this,
+                    this::openPlayStoreListing,
+                    () -> {
+                        pendingUpdateVersionCode = -1;
+                        updateDialogVisible = false;
+                        endTimerDialogHold();
+                    });
+        } catch (RuntimeException ignored) {
+            pendingUpdateVersionCode = -1;
+            updateDialogVisible = false;
+            endTimerDialogHold();
+        }
+    }
+
+    private void openPlayStoreListing() {
+        String packageName = getPackageName();
+        Intent marketIntent = new Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("market://details?id=" + packageName));
+        marketIntent.setPackage("com.android.vending");
+        try {
+            startActivity(marketIntent);
+            return;
+        } catch (ActivityNotFoundException ignored) {
+            // Fall back to the web listing when the Play Store app is unavailable.
+        }
+
+        Intent webIntent = new Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/apps/details?id=" + packageName));
+        try {
+            startActivity(webIntent);
+        } catch (ActivityNotFoundException ignored) {
+            showToast(getString(R.string.play_store_unavailable));
+        }
+    }
+
+    private void bindEdgePanelButtons() {
+        if (!hasEdgePanels()) {
+            return;
+        }
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                (TextView) btnToggleInfo,
+                10, 14, 1,
+                TypedValue.COMPLEX_UNIT_SP);
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                (TextView) btnToggleControls,
+                10, 14, 1,
+                TypedValue.COMPLEX_UNIT_SP);
+        bindPressAction(R.id.btn_toggle_info, () -> {
+            if (isAnimatingMove) {
+                showToast(getString(R.string.piece_moving));
+                return;
+            }
+            boolean opening = !infoPanelOpen;
+            infoPanelOpen = opening;
+            if (opening) {
+                controlsPanelOpen = false;
+            }
+            applyEdgePanelState(true);
+        });
+        bindPressAction(R.id.btn_toggle_controls, () -> {
+            if (isAnimatingMove) {
+                showToast(getString(R.string.piece_moving));
+                return;
+            }
+            boolean opening = !controlsPanelOpen;
+            controlsPanelOpen = opening;
+            if (opening) {
+                infoPanelOpen = false;
+            }
+            applyEdgePanelState(true);
+        });
+    }
     private void applyButtonContrast() {
         int darkText = getResources().getColor(R.color.ink_black);
         int lightText = getResources().getColor(R.color.btn_text_color);
@@ -291,6 +515,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void showTeamSetup() {
         gameStarted = false;
+        victoryPending = false;
+        savedGameChoicePending = false;
+        moveUndoState = null;
         isAnimatingMove = false;
         isTimerHeldForAnimation = false;
         pauseTimer();
@@ -300,13 +527,14 @@ public class MainActivity extends AppCompatActivity {
         finishedSummaryLayout.removeAllViews();
         waitingArea.removeAllViews();
         removeAllPiecesFromScreen();
-        topPanel.setVisibility(View.INVISIBLE);
+        topPanel.setVisibility(View.GONE);
         boardContainer.setVisibility(View.INVISIBLE);
-        controlPanel.setVisibility(View.INVISIBLE);
-        setLandscapeDrawerTabsVisible(false);
+        controlPanel.setVisibility(View.GONE);
+        setEdgePanelTabsVisible(false);
         setupPanel.setVisibility(View.VISIBLE);
         setupPanel.setElevation(dp(24));
         setupPanel.bringToFront();
+        updateSetupRuleSummary();
         updateTurnLogView();
         persistGameState();
         enterImmersiveMode();
@@ -325,6 +553,35 @@ public class MainActivity extends AppCompatActivity {
                 this::endTimerDialogHold);
     }
 
+    private void showSavedGameChoice() {
+        if (!gameStarted || isFinishing() || isDestroyed()) {
+            savedGameChoicePending = false;
+            return;
+        }
+        savedGameChoiceVisible = true;
+        beginTimerDialogHold();
+        YutDialogs.showSavedGameChoice(
+                this,
+                () -> {
+                    savedGameChoiceVisible = false;
+                    savedGameChoicePending = false;
+                    restoredGameSavedAtEpochMillis = 0L;
+                    endTimerDialogHold();
+                },
+                () -> {
+                    savedGameChoiceVisible = false;
+                    savedGameChoicePending = false;
+                    restoredGameSavedAtEpochMillis = 0L;
+                    timerDialogHoldCount = 0;
+                    showTeamSetup();
+                    maybeShowPendingUpdate();
+                });
+    }
+
+    boolean isSavedGameChoiceVisible() {
+        return savedGameChoiceVisible;
+    }
+
     private void startGame(int teamCount) {
         YutGameEngine.ActionResult result = game.setTeamCount(teamCount);
         if (!result.success) {
@@ -333,31 +590,31 @@ public class MainActivity extends AppCompatActivity {
         }
 
         gameStarted = true;
+        moveUndoState = null;
         setupPanel.setVisibility(View.GONE);
-        topPanel.setVisibility(View.VISIBLE);
         boardContainer.setVisibility(View.VISIBLE);
-        controlPanel.setVisibility(View.VISIBLE);
+        prepareEdgePanels(true);
         resetGame();
-        prepareLandscapeDrawers(true);
         persistGameState();
         enterImmersiveMode();
     }
 
     private void restoreGameScreen(String statusMessage, int statusColor) {
+        restoreGameScreen(statusMessage, statusColor, true);
+    }
+
+    private void restoreGameScreen(
+            String statusMessage,
+            int statusColor,
+            boolean syncPanelState) {
         isTimerHeldForAnimation = false;
         setupPanel.setVisibility(View.GONE);
-        topPanel.setVisibility(View.VISIBLE);
         boardContainer.setVisibility(View.VISIBLE);
-        controlPanel.setVisibility(View.VISIBLE);
-        setLandscapeDrawerTabsVisible(true);
+        setEdgePanelTabsVisible(true);
         resultLayout.removeAllViews();
         buildTeamAreas();
 
-        for (int team = 0; team < game.getTeamCount(); team++) {
-            finishedLayouts[team].removeAllViews();
-        }
-
-        boardContainer.post(() -> {
+        boardOverlay.post(() -> {
             for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
                 for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
                     Piece piece = game.getPiece(team, id);
@@ -371,17 +628,18 @@ public class MainActivity extends AppCompatActivity {
                         } else {
                             removeFromParent(pieceViews[team][id]);
                         }
-                    } else {
-                        movePieceUI(team, id, piece.position);
                     }
                 }
             }
+            normalizeSelectedBoardPiece();
+            renderBoardPiecesNow();
+            updateFinishedSummary();
             updatePieceSelectionStyles();
             updateMovePreviews();
         });
 
         if (statusMessage.isEmpty()) {
-            textStatus.setText(YutGameEngine.getTeamName(game.getCurrentTeam()) + " \ucc28\ub840\uc785\ub2c8\ub2e4.");
+            textStatus.setText(getString(R.string.team_turn, teamName(game.getCurrentTeam())));
             textStatus.setTextColor(getStatusColor());
         } else {
             textStatus.setText(statusMessage);
@@ -394,20 +652,26 @@ public class MainActivity extends AppCompatActivity {
         if (game.isGameOver()) {
             findViewById(R.id.btn_restart).setEnabled(true);
         }
-        prepareLandscapeDrawers(false);
+        prepareEdgePanels(false);
+        if (syncPanelState
+                && !isAnimatingMove
+                && selectedPreviewPieceId == -1
+                && !game.isGameOver()) {
+            syncControlPanelForNextAction(false);
+        }
     }
 
     private void resetGame() {
+        bonusTimeBaselineResultId = 0;
+        victoryPending = false;
         isAnimatingMove = false;
         isTimerHeldForAnimation = false;
+        moveUndoState = null;
         game.reset();
         resultLayout.removeAllViews();
         buildTeamAreas();
-        for (int team = 0; team < game.getTeamCount(); team++) {
-            finishedLayouts[team].removeAllViews();
-        }
 
-        textStatus.setText("1\ud300 \ucc28\ub840\uc785\ub2c8\ub2e4. \uc737 \uacb0\uacfc\ub97c \uc785\ub825\ud558\uc138\uc694.");
+        textStatus.setText(R.string.initial_status);
         textStatus.setTextColor(getStatusColor());
         textStatus.animate().cancel();
         textStatus.setScaleX(1f);
@@ -417,7 +681,7 @@ public class MainActivity extends AppCompatActivity {
         setControlsEnabled(true);
         startTurnTimer();
         turnLog.clear();
-        addTurnLog("1\ud300: \uc0c8 \uac8c\uc784 \uc2dc\uc791");
+        addTurnLog(getString(R.string.log_new_game, teamName(0)));
 
         for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
             for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
@@ -432,41 +696,65 @@ public class MainActivity extends AppCompatActivity {
 
     private void buildTeamAreas() {
         finishedSummaryLayout.removeAllViews();
-        finishedSummaryLayout.setOrientation(LinearLayout.VERTICAL);
+        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        finishedSummaryLayout.setOrientation(landscape ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
         waitingArea.removeAllViews();
         waitingArea.setOrientation(LinearLayout.VERTICAL);
 
-        for (int team = 0; team < game.getTeamCount(); team++) {
-            finishedLayouts[team] = createFinishedTeamRow(team);
+        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
+            finishedCountViews[team] = null;
         }
+        for (int team = 0; team < game.getTeamCount(); team++) {
+            createFinishedTeamSummary(team, landscape);
+        }
+        updateFinishedSummary();
         rebuildCurrentWaitingArea();
     }
 
-    private LinearLayout createFinishedTeamRow(int team) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setPadding(0, dp(2), 0, dp(2));
-        finishedSummaryLayout.addView(row, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(28)));
+    private void createFinishedTeamSummary(int team, boolean landscape) {
+        TextView summary = new TextView(this);
+        summary.setGravity(Gravity.CENTER_VERTICAL | (landscape ? Gravity.START : Gravity.CENTER_HORIZONTAL));
+        summary.setIncludeFontPadding(false);
+        summary.setTextColor(getTeamColor(team));
+        summary.setTextSize(12);
+        summary.setTypeface(Typeface.DEFAULT_BOLD);
+        summary.setPadding(dp(4), 0, dp(4), 0);
+        finishedCountViews[team] = summary;
 
-        TextView label = new TextView(this);
-        label.setText(YutGameEngine.getTeamName(team) + " \uc644\uc8fc");
-        label.setTextColor(getTeamColor(team));
-        label.setTextSize(11);
-        label.setTypeface(Typeface.DEFAULT_BOLD);
-        row.addView(label, new LinearLayout.LayoutParams(dp(66), LinearLayout.LayoutParams.WRAP_CONTENT));
+        int summaryHeight = isCompactPortrait() ? dp(24) : dp(28);
+        LinearLayout.LayoutParams params = landscape
+                ? new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, summaryHeight)
+                : new LinearLayout.LayoutParams(0, summaryHeight, 1f);
+        finishedSummaryLayout.addView(summary, params);
+    }
 
-        LinearLayout finishedLayout = new LinearLayout(this);
-        finishedLayout.setGravity(Gravity.CENTER_VERTICAL);
-        finishedLayout.setOrientation(LinearLayout.HORIZONTAL);
-        row.addView(finishedLayout, new LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                1f));
-
-        return finishedLayout;
+    private void updateFinishedSummary() {
+        if (finishedCountViews == null) {
+            return;
+        }
+        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        for (int team = 0; team < game.getTeamCount(); team++) {
+            TextView summary = finishedCountViews[team];
+            if (summary == null) {
+                continue;
+            }
+            int finishedCount = 0;
+            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
+                if (game.getPiece(team, id).isFinished) {
+                    finishedCount++;
+                }
+            }
+            String summaryText = getString(
+                    landscape ? R.string.finished_summary_landscape : R.string.finished_summary_portrait,
+                    teamName(team),
+                    finishedCount,
+                    YutGameEngine.PIECE_COUNT);
+            summary.setText(summaryText);
+            summary.setContentDescription(getString(
+                    R.string.finished_summary_description,
+                    teamName(team),
+                    finishedCount,
+                    YutGameEngine.PIECE_COUNT));        }
     }
 
     private void createWaitingTeamRow(int team) {
@@ -475,18 +763,23 @@ public class MainActivity extends AppCompatActivity {
         row.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(36));
-        if (team > 0) {
-            rowParams.setMargins(0, dp(5), 0, 0);
-        }
+                dp(48));
         waitingArea.addView(row, rowParams);
 
+        boolean compact = usesCompactWaitingTray();
         TextView label = new TextView(this);
-        label.setText(YutGameEngine.getTeamName(team));
+        label.setText(teamName(team));
         label.setTextColor(getTeamColor(team));
-        label.setTextSize(12);
+        label.setTextSize(13);
         label.setTypeface(Typeface.DEFAULT_BOLD);
-        row.addView(label, new LinearLayout.LayoutParams(dp(42), LinearLayout.LayoutParams.WRAP_CONTENT));
+        label.setMaxLines(1);
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                label,
+                10, 13, 1,
+                TypedValue.COMPLEX_UNIT_SP);
+        row.addView(label, new LinearLayout.LayoutParams(
+                dp(40),
+                LinearLayout.LayoutParams.WRAP_CONTENT));
 
         LinearLayout spots = new LinearLayout(this);
         spots.setGravity(Gravity.CENTER_VERTICAL);
@@ -495,11 +788,17 @@ public class MainActivity extends AppCompatActivity {
 
         for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
             FrameLayout spot = new FrameLayout(this);
-            spot.setBackgroundResource(R.drawable.shape_wait_spot);
+            spot.setBackgroundResource(R.drawable.shape_wait_spot_touch);
             spot.setClipChildren(false);
             spot.setClipToPadding(false);
-            LinearLayout.LayoutParams spotParams = new LinearLayout.LayoutParams(dp(32), dp(32));
-            spotParams.setMargins(0, 0, dp(5), 0);
+            final int pieceId = id;
+            spot.setContentDescription(getString(R.string.waiting_piece_description, teamName(team), id + 1));
+            spot.setClickable(true);
+            spot.setFocusable(true);
+            spot.setOnClickListener(v -> selectPiece(team, pieceId));
+            LinearLayout.LayoutParams spotParams = new LinearLayout.LayoutParams(dp(48), dp(48));
+            int spotMargin = 0;
+            spotParams.setMargins(spotMargin, 0, spotMargin, 0);
             spots.addView(spot, spotParams);
             waitSpots[team][id] = spot;
         }
@@ -542,7 +841,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleYutInput(int steps) {
         if (isAnimatingMove) {
-            showToast("\ub9d0\uc774 \uc774\ub3d9 \uc911\uc785\ub2c8\ub2e4.");
+            showToast(getString(R.string.piece_moving));
+            return;
+        }
+        if (expireTimedTurnBeforeAction()) {
             return;
         }
 
@@ -552,38 +854,95 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        moveUndoState = null;
         selectSinglePendingResult();
         textStatus.setText(getRollStatusMessage(steps, result.message));
         textStatus.setTextColor(getStatusColor());
-        if (game.isRollAllowed()) {
+        if (steps == 4 || steps == 5) {
             addBonusTime();
         }
-        addTurnLog(YutGameEngine.getTeamName(game.getCurrentTeam()) + ": "
-                + YutGameEngine.getResultName(steps) + " \uc785\ub825");
+        addTurnLog(getString(R.string.log_roll, teamName(game.getCurrentTeam()), resultName(steps)));
         playFeedback(GameFeedback.TAP);
         updateResultButtons();
+        updatePieceSelectionStyles(true);
         updateMovePreviews();
         persistGameState();
     }
 
+    private void undoLastAction() {
+        if (moveUndoState != null) {
+            undoLastMove();
+            return;
+        }
+        undoLastRoll();
+    }
+
     private void undoLastRoll() {
         if (isAnimatingMove) {
-            showToast("\ub9d0\uc774 \uc774\ub3d9 \uc911\uc785\ub2c8\ub2e4.");
+            showToast(getString(R.string.piece_moving));
+            return;
+        }
+        if (expireTimedTurnBeforeAction()) {
             return;
         }
 
+        List<Integer> before = game.getPendingResults();
+        int removedSteps = before.isEmpty() ? 0 : before.get(before.size() - 1);
+        List<YutGameEngine.MoveChoice> choices = game.getMoveChoices();
+        int removedId = choices.isEmpty() ? 0 : choices.get(choices.size() - 1).resultId;
         YutGameEngine.ActionResult result = game.undoLastRoll();
         if (!result.success) {
             showToast(result.message);
             return;
         }
 
+        if ((removedSteps == 4 || removedSteps == 5) && turnDurationMillis > 0L
+                && removedId > bonusTimeBaselineResultId) {
+            syncTimerToNow();
+            remainingTurnMillis = Math.max(0L, remainingTurnMillis - BONUS_TURN_MILLIS);
+            updateTimerView();
+        }
         selectSinglePendingResult();
         textStatus.setText(result.message);
         textStatus.setTextColor(getStatusColor());
-        addTurnLog(YutGameEngine.getTeamName(game.getCurrentTeam()) + ": \ub9c8\uc9c0\ub9c9 \uc737 \uacb0\uacfc \ucde8\uc18c");
+        addTurnLog(getString(R.string.log_undo_roll, teamName(game.getCurrentTeam())));
         updateResultButtons();
+        updatePieceSelectionStyles(true);
         updateMovePreviews();
+        playFeedback(GameFeedback.TAP);
+        persistGameState();
+    }
+
+    private void undoLastMove() {
+        if (isAnimatingMove) {
+            showToast(getString(R.string.piece_moving));
+            return;
+        }
+        if (moveUndoState == null) {
+            return;
+        }
+
+        GameStateStore.MoveUndoState state = moveUndoState;
+        moveUndoState = null;
+        game.restoreState(state.engineState);
+        remainingTurnMillis = turnDurationMillis <= 0L
+                ? 0L
+                : Math.max(0L, state.remainingTurnMillis);
+        isTimerPaused = state.timerPaused;
+        timeExpiredNotified = state.timeExpiredNotified;
+        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        selectedPreviewTeamId = state.selectedTeamId;
+        selectedPreviewPieceId = state.selectedPieceId;
+        if (!isValidPreviewSelection(selectedPreviewTeamId, selectedPreviewPieceId)) {
+            selectedPreviewTeamId = -1;
+            selectedPreviewPieceId = -1;
+        }
+        restoreTurnLog(state.turnLog);
+        addTurnLog(getString(R.string.log_undo_move, teamName(game.getCurrentTeam())));
+        restoreGameScreen(getString(R.string.move_undone), getStatusColor());
+        if (selectedPreviewPieceId != -1) {
+            focusBoardForDestinationSelection();
+        }
         playFeedback(GameFeedback.TAP);
         persistGameState();
     }
@@ -599,34 +958,63 @@ public class MainActivity extends AppCompatActivity {
             return fallbackMessage;
         }
 
-        String nextAction = game.isRollAllowed()
-                ? "\ub354 \ub358\uc9c0\uac70\ub098 \ub9d0\uc744 \uace0\ub974\uba74 \ub3c4\ucc29\uc9c0\uac00 \ud45c\uc2dc\ub429\ub2c8\ub2e4."
-                : "\ub9d0\uc744 \uace0\ub974\uba74 \ub3c4\ucc29\uc9c0\uac00 \ud45c\uc2dc\ub429\ub2c8\ub2e4.";
-        return YutGameEngine.getResultName(steps) + "\uc774 \ub098\uc654\uc2b5\ub2c8\ub2e4. " + nextAction;
+        String stepLabel = steps > 0 ? "+" + steps : String.valueOf(steps);
+        return getString(
+                game.isRollAllowed() ? R.string.roll_status_bonus : R.string.roll_status_move,
+                resultName(steps),
+                stepLabel);
+    }
+    private void requestEndCurrentTurn() {
+        if (isAnimatingMove) {
+            showToast(getString(R.string.piece_moving));
+            return;
+        }
+        if (expireTimedTurnBeforeAction()) {
+            return;
+        }
+
+        int pendingResultCount = game.getPendingResults().size();
+        if (pendingResultCount <= 0) {
+            endCurrentTurn();
+            return;
+        }
+
+        beginTimerDialogHold();
+        YutDialogs.showEndTurnConfirmation(
+                this,
+                pendingResultCount,
+                this::endCurrentTurn,
+                this::endTimerDialogHold);
     }
 
     private void endCurrentTurn() {
         if (isAnimatingMove) {
-            showToast("\ub9d0\uc774 \uc774\ub3d9 \uc911\uc785\ub2c8\ub2e4.");
+            showToast(getString(R.string.piece_moving));
+            return;
+        }
+        if (expireTimedTurnBeforeAction()) {
             return;
         }
 
-        String endedTeamName = YutGameEngine.getTeamName(game.getCurrentTeam());
+        String endedTeamName = teamName(game.getCurrentTeam());
         YutGameEngine.ActionResult result = game.endTurn();
         if (!result.success) {
             showToast(result.message);
             return;
         }
 
+        moveUndoState = null;
         textStatus.setText(result.message);
         textStatus.setTextColor(getStatusColor());
-        addTurnLog(endedTeamName + ": \ud134 \uc885\ub8cc");
+        addTurnLog(getString(R.string.log_turn_end, endedTeamName));
         clearSelectedPiece();
         clearMovePreviews();
         resultLayout.removeAllViews();
         rebuildCurrentWaitingArea();
+        updateRollInputAvailability();
         startTurnTimer();
         playFeedback(GameFeedback.TAP);
+        syncControlPanelForNextAction(true);
         persistGameState();
     }
 
@@ -647,7 +1035,7 @@ public class MainActivity extends AppCompatActivity {
             button.setStateListAnimator(null);
             button.setSelected(choice.selectionOrder > 0);
             button.setEnabled(!isAnimatingMove);
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(moveChoices.size() > 1 ? 82 : 68), dp(38));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(moveChoices.size() > 1 ? 86 : 72), dp(44));
             params.setMargins(0, 0, dp(6), 0);
             button.setLayoutParams(params);
 
@@ -659,11 +1047,16 @@ public class MainActivity extends AppCompatActivity {
             button.setAlpha(0.8f);
             button.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(140).start();
         }
+        updateRollInputAvailability();
+        updateUndoActionAvailability();
     }
 
     private void onResultClick(int index) {
         if (isAnimatingMove) {
-            showToast("\ub9d0\uc774 \uc774\ub3d9 \uc911\uc785\ub2c8\ub2e4.");
+            showToast(getString(R.string.piece_moving));
+            return;
+        }
+        if (expireTimedTurnBeforeAction()) {
             return;
         }
 
@@ -673,9 +1066,22 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        textStatus.setText(result.message);
+        boolean unavailableSelectedPiece = false;
+        if (game.getSelectedSteps().isEmpty()) {
+            clearSelectedPiece();
+        } else if (selectedPreviewTeamId != -1
+                && selectedPreviewPieceId != -1
+                && !game.previewMove(selectedPreviewTeamId, selectedPreviewPieceId).available) {
+            unavailableSelectedPiece = true;
+            clearSelectedPiece();
+        }
+
+        textStatus.setText(unavailableSelectedPiece
+                ? game.getWaitingPieceBackDoMessage()
+                : result.message);
         textStatus.setTextColor(getStatusColor());
         updateResultButtons();
+        updatePieceSelectionStyles(true);
         updateMovePreviews();
         playFeedback(GameFeedback.TAP);
         persistGameState();
@@ -683,39 +1089,50 @@ public class MainActivity extends AppCompatActivity {
 
     private void selectPiece(int teamId, int pieceId) {
         if (isAnimatingMove) {
-            showToast("\ub9d0\uc774 \uc774\ub3d9 \uc911\uc785\ub2c8\ub2e4.");
+            showToast(getString(R.string.piece_moving));
+            return;
+        }
+        if (expireTimedTurnBeforeAction()) {
             return;
         }
 
         if (teamId != game.getCurrentTeam()) {
-            showToast("\uc9c0\uae08\uc740 " + YutGameEngine.getTeamName(game.getCurrentTeam()) + " \ucc28\ub840\uc785\ub2c8\ub2e4.");
+            showToast(getString(R.string.team_turn, teamName(game.getCurrentTeam())));
             return;
         }
 
         if (game.getSelectedSteps().isEmpty()) {
-            selectedPreviewTeamId = teamId;
-            selectedPreviewPieceId = pieceId;
-            updatePieceSelectionStyles();
+            clearSelectedPiece();
             clearMovePreviews();
-            textStatus.setText("\uc774 \ub9d0\uc5d0 \uc0ac\uc6a9\ud560 \uc737 \uacb0\uacfc\ub97c \uc21c\uc11c\ub300\ub85c \uc120\ud0dd\ud558\uc138\uc694.");
+            textStatus.setText(R.string.select_result_first);
             textStatus.setTextColor(getStatusColor());
             persistGameState();
             return;
         }
-
-        if (selectedPreviewTeamId != teamId || selectedPreviewPieceId != pieceId) {
-            selectedPreviewTeamId = teamId;
-            selectedPreviewPieceId = pieceId;
-            updatePieceSelectionStyles();
-            updateMovePreviews();
-            textStatus.setText("\ub3c4\ucc29\uc9c0\ub97c \ud655\uc778\ud588\uc2b5\ub2c8\ub2e4. \uac19\uc740 \ub9d0\uc774\ub098 \ud654\uc0b4\ud45c\ub97c \ub204\ub974\uba74 \uc774\ub3d9\ud569\ub2c8\ub2e4.");
+        YutGameEngine.MovePreview preview = game.previewMove(teamId, pieceId);
+        if (!preview.available) {
+            clearSelectedPiece();
+            clearMovePreviews();
+            textStatus.setText(game.getWaitingPieceBackDoMessage());
             textStatus.setTextColor(getStatusColor());
             playFeedback(GameFeedback.TAP);
             persistGameState();
             return;
         }
 
-        commitSelectedMove();
+
+        boolean selectionChanged = selectedPreviewTeamId != teamId || selectedPreviewPieceId != pieceId;
+        selectedPreviewTeamId = teamId;
+        selectedPreviewPieceId = pieceId;
+        updatePieceSelectionStyles();
+        updateMovePreviews();
+        textStatus.setText(R.string.tap_destination);
+        textStatus.setTextColor(getStatusColor());
+        if (selectionChanged) {
+            playFeedback(GameFeedback.SELECT);
+        }
+        focusBoardForDestinationSelection();
+        persistGameState();
     }
 
     private void commitSelectedMove() {
@@ -724,24 +1141,38 @@ public class MainActivity extends AppCompatActivity {
                 || selectedPreviewPieceId == -1) {
             return;
         }
+        if (expireTimedTurnBeforeAction()) {
+            return;
+        }
 
         String planText = getSelectedStepsText();
+        GameStateStore.MoveUndoState undoCandidate = captureMoveUndoState();
         YutGameEngine.MoveResult result = game.moveSelectedPiece(selectedPreviewTeamId, selectedPreviewPieceId);
         if (!result.success) {
             showToast(result.message);
             return;
         }
 
+        moveUndoState = undoCandidate;
         applyMoveResult(result, planText);
     }
 
     private void applyMoveResult(YutGameEngine.MoveResult result, String planText) {
-        playFeedback(GameFeedback.MOVE);
+        // Commit all game effects before starting disposable presentation work.
+        updateStatusAfterMove(result);
+        addTurnLog(formatMoveLog(result, planText));
+        if (result.turnChanged) {
+            startTurnTimer();
+        } else if (result.caught) {
+            for (int i = 0; i < result.captureEventCount(); i++) addBonusTime();
+        }
+        victoryPending = result.gameWon;
         isAnimatingMove = true;
         isTimerHeldForAnimation = true;
         setControlsEnabled(false);
         clearSelectedPiece();
         clearMovePreviews();
+        persistGameState();
 
         animateMoveResult(result, () -> {
             for (YutGameEngine.PieceRef caughtPiece : result.caughtPieces) {
@@ -754,28 +1185,73 @@ public class MainActivity extends AppCompatActivity {
 
             isAnimatingMove = false;
             isTimerHeldForAnimation = false;
+            renderBoardPiecesNow();
+            updateFinishedSummary();
             rebuildCurrentWaitingArea();
             updateResultButtons();
             setControlsEnabled(true);
-            updateStatusAfterMove(result);
-            addTurnLog(formatMoveLog(result, planText));
             if (result.gameWon) {
                 playFeedback(GameFeedback.WIN);
                 setControlsEnabled(false);
                 findViewById(R.id.btn_restart).setEnabled(true);
+                updateKeepScreenOn();
                 persistGameState();
-                showGameOverDialog(result);
+                maybeShowVictory();
                 return;
             }
-            if (result.turnChanged) {
-                startTurnTimer();
-            } else if (result.caught) {
-                playFeedback(GameFeedback.CATCH);
-                addBonusTime();
+            if (!result.caught) {
+                playFeedback(GameFeedback.MOVE);
             }
+            timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+            updatePieceSelectionStyles(true);
             updateMovePreviews();
+            syncControlPanelForNextAction(true);
             persistGameState();
+            maybeShowPendingUpdate();
         });
+    }
+
+    private void cancelMovePresentation(boolean redraw) {
+        if (!isAnimatingMove) return;
+        // Invalidate callbacks before cancellation can invoke any animator listener.
+        layoutGeneration++;
+        isAnimatingMove = false;
+        for (Animator animator : new ArrayList<>(moveAnimators)) animator.cancel();
+        moveAnimators.clear();
+        if (pieceViews != null) {
+            for (PieceStackView[] team : pieceViews) {
+                for (PieceStackView piece : team) if (piece != null) piece.animate().cancel();
+            }
+        }
+        isTimerHeldForAnimation = false;
+        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        if (redraw && boardOverlay != null && gameStarted) {
+            restoreGameScreen(textStatus.getText().toString(), textStatus.getCurrentTextColor());
+            syncControlPanelForNextAction(false);
+        }
+    }
+
+    private void maybeShowVictory() {
+        if (!isActivityResumed || !victoryPending || isAnimatingMove || gameOverDialogVisible
+                || !gameStarted || !game.isGameOver() || isFinishing() || isDestroyed()) return;
+        showGameOverDialog(YutGameEngine.MoveResult.success(game.getCurrentTeam(), 0));
+    }
+
+    private GameStateStore.MoveUndoState captureMoveUndoState() {
+        syncTimerToNow();
+        GameStateStore.MoveUndoState state = new GameStateStore.MoveUndoState();
+        state.engineState = game.saveState();
+        state.remainingTurnMillis = remainingTurnMillis;
+        state.timerPaused = isTimerPaused;
+        state.timeExpiredNotified = timeExpiredNotified;
+        state.selectedTeamId = selectedPreviewTeamId;
+        state.selectedPieceId = selectedPreviewPieceId;
+        state.statusMessage = textStatus == null ? "" : textStatus.getText().toString();
+        state.statusColor = textStatus == null
+                ? getResources().getColor(R.color.text_status)
+                : textStatus.getCurrentTextColor();
+        state.turnLog = getTurnLogSnapshot();
+        return state;
     }
 
     private void updateStatusAfterMove(YutGameEngine.MoveResult result) {
@@ -804,12 +1280,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showGameOverDialog(YutGameEngine.MoveResult result) {
+        gameOverDialogVisible = true;
         YutDialogs.showGameOver(
                 this,
-                YutGameEngine.getTeamName(result.teamId) + " \uc2b9\ub9ac!",
+                getString(R.string.victory_title, teamName(result.teamId)),
                 buildGameOverMessage(result),
                 this::showTeamSetup,
-                this::showTurnLogDialog);
+                this::showTurnLogDialog,
+                () -> {
+                    gameOverDialogVisible = false;
+                    victoryPending = false;
+                    persistGameState();
+                });
     }
 
     private void animateMoveResult(YutGameEngine.MoveResult result, Runnable onComplete) {
@@ -819,7 +1301,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         int animationGeneration = layoutGeneration;
-        boardContainer.post(() -> {
+        boardOverlay.post(() -> {
             if (animationGeneration == layoutGeneration) {
                 animateMoveSegment(result, 0, onComplete, animationGeneration);
             }
@@ -844,93 +1326,368 @@ public class MainActivity extends AppCompatActivity {
         }
 
         Runnable nextSegment = () -> {
-            if (animationGeneration != layoutGeneration) {
-                return;
+            if (animationGeneration == layoutGeneration) {
+                animateMoveSegment(result, segmentIndex + 1, onComplete, animationGeneration);
             }
+        };
+        if (segment.pieceIds.isEmpty() || boardPath.isEmpty()) {
             for (YutGameEngine.PieceRef caughtPiece : segment.caughtPieces) {
                 moveToWaitSpot(caughtPiece.teamId, caughtPiece.pieceId);
             }
-            animateMoveSegment(result, segmentIndex + 1, onComplete, animationGeneration);
-        };
-        if (segment.pieceIds.isEmpty() || boardPath.isEmpty()) {
             nextSegment.run();
             return;
         }
 
-        int size = getBoardPieceSize();
-        for (int id : segment.pieceIds) {
-            TextView pieceView = pieceViews[result.teamId][id];
-            moveViewToParent(pieceView, boardContainer);
-            pieceView.animate().cancel();
-            pieceView.setLayoutParams(new FrameLayout.LayoutParams(size, size));
-            placePieceOnBoardNode(pieceView, segment.startNode, id, size);
-        }
-        animatePathStep(result.teamId, segment.pieceIds, boardPath, 0, nextSegment, animationGeneration);
+        int representativeId = prepareAnimatedBoardGroup(result.teamId, segment.pieceIds, segment.startNode);
+        PieceStackView movingView = pieceViews[result.teamId][representativeId];
+        animateStackLayout(
+                movingView,
+                1f,
+                segment.pieceIds.size() > 1 ? 130L : 60L,
+                () -> animatePathStep(
+                        result.teamId,
+                        representativeId,
+                        segment,
+                        boardPath,
+                        0,
+                        nextSegment,
+                        animationGeneration));
     }
 
-    private void animatePathStep(int teamId, List<Integer> pieceIds, List<Integer> path, int index, Runnable onComplete, int animationGeneration) {
+    private void animatePathStep(
+            int teamId,
+            int pieceId,
+            YutGameEngine.MoveAnimation segment,
+            List<Integer> path,
+            int index,
+            Runnable onComplete,
+            int animationGeneration) {
         if (animationGeneration != layoutGeneration) {
             return;
         }
         if (index >= path.size()) {
-            bounceArrivedPieces(teamId, pieceIds, () -> {
-                if (animationGeneration == layoutGeneration) {
-                    onComplete.run();
-                }
-            });
+            int arrivalNode = path.get(path.size() - 1);
+            Runnable showArrival = () -> animateArrivedBoardGroup(
+                    teamId,
+                    pieceId,
+                    segment,
+                    arrivalNode,
+                    onComplete,
+                    animationGeneration);
+            if (segment.caughtPieces.isEmpty()) {
+                showArrival.run();
+            } else {
+                animateCapturedPieces(segment.caughtPieces, showArrival, animationGeneration);
+            }
             return;
         }
 
         int node = path.get(index);
         int duration = Math.max(110, 190 - Math.min(index, 4) * 12);
-        Runnable nextStep = () -> animatePathStep(teamId, pieceIds, path, index + 1, onComplete, animationGeneration);
-
-        for (int i = 0; i < pieceIds.size(); i++) {
-            int pieceId = pieceIds.get(i);
-            TextView pieceView = pieceViews[teamId][pieceId];
-            float[] target = getBoardNodePosition(node, pieceId, getBoardPieceSize());
-            pieceView.animate()
-                    .x(target[0])
-                    .y(target[1])
-                    .setInterpolator(new AccelerateDecelerateInterpolator())
-                    .setDuration(duration)
-                    .withEndAction(i == pieceIds.size() - 1 ? nextStep : null)
-                    .start();
-        }
+        Runnable nextStep = () -> animatePathStep(
+                teamId,
+                pieceId,
+                segment,
+                path,
+                index + 1,
+                onComplete,
+                animationGeneration);
+        PieceStackView pieceView = pieceViews[teamId][pieceId];
+        boardOverlay.releaseAnchor(pieceView);
+        float[] target = getBoardNodePosition(node, getBoardPieceViewSize());
+        pieceView.bringToFront();
+        pieceView.animate()
+                .x(target[0])
+                .y(target[1])
+                .setInterpolator(new AccelerateDecelerateInterpolator())
+                .setDuration(duration)
+                .withEndAction(nextStep)
+                .start();
     }
 
-    private void movePieceUI(int teamId, int pieceId, int logicalNode) {
-        if (logicalNode == BoardPath.START_NODE || logicalNode == BoardPath.END_NODE) {
-            return;
+    private int prepareAnimatedBoardGroup(int teamId, List<Integer> pieceIds, int logicalNode) {
+        int representativeId = getRepresentativePieceId(pieceIds);
+        for (int id : pieceIds) {
+            if (id != representativeId) {
+                removeFromParent(pieceViews[teamId][id]);
+            }
         }
 
-        TextView pieceView = pieceViews[teamId][pieceId];
-        moveViewToParent(pieceView, boardContainer);
+        PieceStackView representative = pieceViews[teamId][representativeId];
+        resetPieceViewTransform(representative);
+        moveViewToParent(representative, boardOverlay);
+        configureBoardGroupAtNode(representative, teamId, representativeId, pieceIds.size(), logicalNode);
+        int size = getBoardPieceViewSize();
+        representative.setLayoutParams(new FrameLayout.LayoutParams(size, size));
+        placePieceOnBoardNode(representative, logicalNode, size);
+        representative.bringToFront();
+        return representativeId;
+    }
 
-        boardContainer.post(() -> {
-            int size = getBoardPieceSize();
-            pieceView.setLayoutParams(new FrameLayout.LayoutParams(size, size));
+    private void animateArrivedBoardGroup(
+            int teamId,
+            int movingPieceId,
+            YutGameEngine.MoveAnimation segment,
+            int logicalNode,
+            Runnable onComplete,
+            int animationGeneration) {
+        if (animationGeneration != layoutGeneration) {
+            return;
+        }
+        List<Integer> arrivedIds = segment.arrivedPieceIds.isEmpty()
+                ? segment.pieceIds
+                : segment.arrivedPieceIds;
+        int representativeId = getRepresentativePieceId(arrivedIds);
+        PieceStackView representative = pieceViews[teamId][representativeId];
+        for (int id : arrivedIds) {
+            if (id != representativeId) {
+                removeFromParent(pieceViews[teamId][id]);
+            }
+        }
+        if (movingPieceId != representativeId) {
+            removeFromParent(pieceViews[teamId][movingPieceId]);
+        }
 
-            float[] target = getBoardNodePosition(logicalNode, pieceId, size);
-            pieceView.animate().x(target[0]).y(target[1]).setDuration(220).start();
+        resetPieceViewTransform(representative);
+        moveViewToParent(representative, boardOverlay);
+        configureBoardGroupAtNode(representative, teamId, representativeId, arrivedIds.size(), logicalNode);
+        int size = getBoardPieceViewSize();
+        representative.setLayoutParams(new FrameLayout.LayoutParams(size, size));
+        placePieceOnBoardNode(representative, logicalNode, size);
+        representative.setCollapseProgress(1f);
+        representative.bringToFront();
+
+        animateStackLayout(representative, 0f, arrivedIds.size() > 1 ? 160L : 70L, () -> {
+            ArrayList<Integer> animatedPiece = new ArrayList<>();
+            animatedPiece.add(representativeId);
+            bounceArrivedPieces(teamId, animatedPiece, () -> {
+                if (animationGeneration == layoutGeneration) {
+                    onComplete.run();
+                }
+            });
         });
     }
 
-    private void placePieceOnBoardNode(View pieceView, int logicalNode, int pieceId, int size) {
-        float[] position = getBoardNodePosition(logicalNode, pieceId, size);
-        pieceView.setX(position[0]);
-        pieceView.setY(position[1]);
+    private void animateCapturedPieces(
+            List<YutGameEngine.PieceRef> caughtPieces,
+            Runnable onComplete,
+            int animationGeneration) {
+        int capturedTeamCount = 0;
+        for (int team = 0; team < game.getTeamCount(); team++) {
+            for (YutGameEngine.PieceRef caughtPiece : caughtPieces) {
+                if (caughtPiece.teamId == team) {
+                    capturedTeamCount++;
+                    break;
+                }
+            }
+        }
+        if (capturedTeamCount == 0) {
+            onComplete.run();
+            return;
+        }
+
+        playFeedback(GameFeedback.CATCH);
+        int[] remainingTeams = {capturedTeamCount};
+        for (int team = 0; team < game.getTeamCount(); team++) {
+            ArrayList<Integer> teamPieceIds = new ArrayList<>();
+            for (YutGameEngine.PieceRef caughtPiece : caughtPieces) {
+                if (caughtPiece.teamId == team) {
+                    teamPieceIds.add(caughtPiece.pieceId);
+                }
+            }
+            if (teamPieceIds.isEmpty()) {
+                continue;
+            }
+
+            int capturedTeam = team;
+            int representativeId = getRepresentativePieceId(teamPieceIds);
+            PieceStackView capturedView = pieceViews[capturedTeam][representativeId];
+            Runnable finishTeam = () -> {
+                for (int id : teamPieceIds) {
+                    moveToWaitSpot(capturedTeam, id);
+                }
+                remainingTeams[0]--;
+                if (remainingTeams[0] == 0 && animationGeneration == layoutGeneration) {
+                    onComplete.run();
+                }
+            };
+            if (capturedView.getParent() != boardOverlay) {
+                finishTeam.run();
+                continue;
+            }
+
+            configureBoardGroupAppearance(
+                    capturedView,
+                    capturedTeam,
+                    representativeId,
+                    teamPieceIds.size());
+            capturedView.bringToFront();
+            animateStackLayout(capturedView, 1f, 100L, () -> {
+                if (animationGeneration != layoutGeneration) return;
+                boardOverlay.releaseAnchor(capturedView);
+                float[] target = getBoardNodePosition(BoardPath.START_NODE, getBoardPieceViewSize());
+                capturedView.animate()
+                        .x(target[0])
+                        .y(target[1])
+                        .scaleX(0.62f)
+                        .scaleY(0.62f)
+                        .alpha(0f)
+                        .setInterpolator(new AccelerateDecelerateInterpolator())
+                        .setDuration(300L)
+                        .withEndAction(finishTeam)
+                        .start();
+            });
+        }
     }
 
-    private float[] getBoardNodePosition(int logicalNode, int pieceId, int size) {
-        int spotIndex = logicalNode == BoardPath.START_NODE ? 15 : game.visualSpotFor(logicalNode);
-        if (spotIndex < 0 || spotIndex >= BoardGeometry.POINTS.length) {
-            spotIndex = 15;
+    private void animateStackLayout(
+            PieceStackView view,
+            float targetProgress,
+            long duration,
+            Runnable onComplete) {
+        float startProgress = view.getCollapseProgress();
+        if (Math.abs(startProgress - targetProgress) < 0.001f) {
+            onComplete.run();
+            return;
         }
-        float[] point = BoardGeometry.POINTS[spotIndex];
-        float x = point[0] * boardContainer.getWidth() - (size / 2f) + getBoardStackOffsetX(pieceId);
-        float y = point[1] * boardContainer.getHeight() - (size / 2f) + getBoardStackOffsetY(pieceId);
-        return new float[]{x, y};
+
+        ValueAnimator animator = ValueAnimator.ofFloat(startProgress, targetProgress);
+        moveAnimators.add(animator);
+        animator.setDuration(duration);
+        animator.setInterpolator(new AccelerateDecelerateInterpolator());
+        animator.addUpdateListener(valueAnimator ->
+                view.setCollapseProgress((float) valueAnimator.getAnimatedValue()));
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean cancelled;
+
+            @Override
+            public void onAnimationCancel(Animator animation) {
+                cancelled = true;
+            }
+
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                moveAnimators.remove(animator);
+                if (!cancelled) {
+                    view.setCollapseProgress(targetProgress);
+                    onComplete.run();
+                }
+            }
+        });
+        animator.start();
+    }
+
+    private void renderBoardPiecesNow() {
+        for (int team = 0; team < game.getTeamCount(); team++) {
+            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
+                Piece piece = game.getPiece(team, id);
+                if (piece.isFinished
+                        || piece.position == BoardPath.START_NODE
+                        || piece.position == BoardPath.END_NODE) {
+                    continue;
+                }
+
+                ArrayList<Integer> groupIds = getBoardGroupIds(team, piece.position);
+                int representativeId = getRepresentativePieceId(groupIds);
+                if (id != representativeId) {
+                    removeFromParent(pieceViews[team][id]);
+                    continue;
+                }
+
+                PieceStackView representative = pieceViews[team][representativeId];
+                resetPieceViewTransform(representative);
+                moveViewToParent(representative, boardOverlay);
+                configureBoardGroupAtNode(representative, team, representativeId, groupIds.size(), piece.position);
+                int size = getBoardPieceViewSize();
+                representative.setLayoutParams(new FrameLayout.LayoutParams(size, size));
+                placePieceOnBoardNode(representative, piece.position, size);
+            }
+        }
+    }
+
+    private ArrayList<Integer> getBoardGroupIds(int teamId, int logicalNode) {
+        ArrayList<Integer> ids = new ArrayList<>();
+        for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
+            Piece piece = game.getPiece(teamId, id);
+            if (!piece.isFinished && game.isSameBoardSpot(piece.position, logicalNode)) {
+                ids.add(id);
+            }
+        }
+        return ids;
+    }
+
+    private int getRepresentativePieceId(List<Integer> pieceIds) {
+        int representativeId = pieceIds.get(0);
+        for (int id : pieceIds) {
+            representativeId = Math.min(representativeId, id);
+        }
+        return representativeId;
+    }
+
+    private void normalizeSelectedBoardPiece() {
+        if (selectedPreviewTeamId < 0 || selectedPreviewPieceId < 0) {
+            return;
+        }
+        Piece selected = game.getPiece(selectedPreviewTeamId, selectedPreviewPieceId);
+        if (selected.isFinished || selected.position == BoardPath.START_NODE) {
+            return;
+        }
+        selectedPreviewPieceId = getRepresentativePieceId(
+                getBoardGroupIds(selectedPreviewTeamId, selected.position));
+    }
+
+    private void configureBoardGroupAtNode(
+            PieceStackView view,
+            int teamId,
+            int pieceId,
+            int groupCount,
+            int logicalNode) {
+        configureBoardGroupAppearance(view, teamId, pieceId, groupCount);
+        int spotIndex = logicalNode == BoardPath.START_NODE
+                ? BoardGeometry.START_SPOT
+                : game.visualSpotFor(logicalNode);
+        view.setArrangement(BoardGeometry.stackArrangementForSpot(spotIndex));
+    }
+
+    private void configureBoardGroupAppearance(PieceStackView view, int teamId, int pieceId, int groupCount) {
+        view.setVisibility(View.VISIBLE);
+        view.setGroupCount(groupCount);
+        view.setVisualDiameterPx(getBoardPieceSize());
+        view.setCollapseProgress(0f);
+        view.setElevation(dp(groupCount > 1 ? 9 : 7));
+        view.setContentDescription(groupCount > 1
+                ? getString(R.string.grouped_piece_description, teamName(teamId), groupCount)
+                : getString(R.string.piece_description, teamName(teamId), pieceId + 1));
+    }
+
+    private void restorePieceIdentity(PieceStackView view, int teamId, int pieceId) {
+        view.setVisibility(View.VISIBLE);
+        view.setGroupCount(1);
+        view.setArrangement(PieceStackLayout.SPACIOUS);
+        view.setVisualDiameterPx(dp(36));
+        view.setCollapseProgress(0f);
+        view.setElevation(dp(7));
+        view.setContentDescription(getString(R.string.piece_description, teamName(teamId), pieceId + 1));
+    }
+
+    private void placePieceOnBoardNode(View pieceView, int logicalNode, int size) {
+        boardOverlay.anchor(pieceView, logicalNode == BoardPath.START_NODE
+                ? BoardGeometry.START_SPOT : game.visualSpotFor(logicalNode));
+    }
+
+    private float[] getBoardNodePosition(int logicalNode, int size) {
+        int spotIndex = logicalNode == BoardPath.START_NODE
+                ? BoardGeometry.START_SPOT
+                : game.visualSpotFor(logicalNode);
+        if (spotIndex < 0 || spotIndex >= BoardGeometry.POINTS.length) {
+            spotIndex = BoardGeometry.START_SPOT;
+        }
+        float[] center = getBoardSpotCenter(spotIndex);
+        return new float[]{center[0] - (size / 2f), center[1] - (size / 2f)};
+    }
+
+    private float[] getBoardSpotCenter(int spotIndex) {
+        return boardOverlay.centerForSpot(spotIndex);
     }
 
     private void updateMovePreviews() {
@@ -942,47 +1699,115 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        boardContainer.post(() -> {
-            YutGameEngine.MovePreview preview = game.previewMove(selectedPreviewTeamId, selectedPreviewPieceId);
+        int previewGeneration = movePreviewGeneration;
+        int activeLayoutGeneration = layoutGeneration;
+        int teamId = selectedPreviewTeamId;
+        int pieceId = selectedPreviewPieceId;
+        boardOverlay.post(() -> {
+            if (previewGeneration != movePreviewGeneration
+                    || activeLayoutGeneration != layoutGeneration
+                    || teamId != selectedPreviewTeamId
+                    || pieceId != selectedPreviewPieceId
+                    || teamId != game.getCurrentTeam()
+                    || game.getSelectedSteps().isEmpty()
+                    || game.isGameOver()) {
+                return;
+            }
+            YutGameEngine.MovePreview preview = game.previewMove(teamId, pieceId);
             if (!preview.available) {
                 return;
             }
             int spotIndex = preview.finishes
-                    ? game.visualSpotFor(15)
-                    : preview.targetNode == BoardPath.START_NODE ? 15 : game.visualSpotFor(preview.targetNode);
+                    ? BoardGeometry.START_SPOT
+                    : preview.targetNode == BoardPath.START_NODE
+                            ? BoardGeometry.START_SPOT
+                            : game.visualSpotFor(preview.targetNode);
             if (spotIndex < 0 || spotIndex >= BoardGeometry.POINTS.length) {
                 return;
             }
-            addPreviewGlow(selectedPreviewPieceId, spotIndex);
+            addPreviewGlow(spotIndex);
         });
     }
 
-    private void addPreviewGlow(int pieceId, int spotIndex) {
-        TextView glow = new TextView(this);
-        glow.setText("\u2193");
-        glow.setGravity(Gravity.CENTER);
-        glow.setTextColor(getResources().getColor(R.color.text_primary));
-        glow.setTextSize(17);
-        glow.setTypeface(Typeface.DEFAULT_BOLD);
+    private void addPreviewGlow(int spotIndex) {
+        int size = Math.max(dp(48), getBoardPieceSize() + dp(10));
+        int ringSize = size + dp(12);
+
+        View ring = new View(this);
+        ring.setBackground(createPreviewRingDrawable());
+        ring.setElevation(dp(6));
+        ring.setClickable(false);
+        ring.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        boardOverlay.addView(ring, new FrameLayout.LayoutParams(ringSize, ringSize));
+        placeOverlayAtSpot(ring, spotIndex, ringSize);
+        previewViews.add(ring);
+
+        ImageView glow = new ImageView(this);
+        glow.setImageResource(R.drawable.ic_destination_arrow);
+        glow.setColorFilter(getResources().getColor(R.color.text_primary));
+        int arrowPadding = Math.max(dp(10), size / 4);
+        glow.setPadding(arrowPadding, arrowPadding, arrowPadding, arrowPadding);
         glow.setBackground(createPreviewDrawable());
-        glow.setElevation(dp(8));
+        glow.setElevation(dp(14));
         glow.setClickable(true);
         glow.setFocusable(true);
+        glow.setContentDescription(getString(R.string.destination_description));
         glow.setOnClickListener(v -> runPressAction(v, this::commitSelectedMove));
-
-        int size = Math.max(dp(38), getBoardPieceSize() + dp(10));
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size);
-        boardContainer.addView(glow, params);
-
-        float[] point = BoardGeometry.POINTS[spotIndex];
-        float x = point[0] * boardContainer.getWidth() - (size / 2f) + getBoardStackOffsetX(pieceId);
-        float y = point[1] * boardContainer.getHeight() - (size / 2f) + getBoardStackOffsetY(pieceId);
-        glow.setX(x);
-        glow.setY(y);
+        boardOverlay.addView(glow, new FrameLayout.LayoutParams(size, size));
+        placeOverlayAtSpot(glow, spotIndex, size);
         previewViews.add(glow);
+
+        DecelerateInterpolator interpolator = new DecelerateInterpolator();
+        ring.setAlpha(0f);
+        ring.setScaleX(0.62f);
+        ring.setScaleY(0.62f);
+        ring.animate()
+                .alpha(0.72f)
+                .scaleX(1.08f)
+                .scaleY(1.08f)
+                .setInterpolator(interpolator)
+                .setDuration(260)
+                .withEndAction(() -> ring.animate()
+                        .alpha(0.46f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(180)
+                        .start())
+                .start();
+
+        glow.setAlpha(0.35f);
+        glow.setScaleX(0.78f);
+        glow.setScaleY(0.78f);
+        glow.animate()
+                .alpha(1f)
+                .scaleX(1.08f)
+                .scaleY(1.08f)
+                .setInterpolator(interpolator)
+                .setDuration(190)
+                .withEndAction(() -> glow.animate().scaleX(1f).scaleY(1f).setDuration(130).start())
+                .start();
+    }
+
+    private void placeOverlayAtSpot(View view, int spotIndex, int size) {
+        boardOverlay.anchor(view, spotIndex);
+    }
+
+    private void positionBoardChild(View view, float left, float top) {
+        ViewGroup.LayoutParams currentParams = view.getLayoutParams();
+        if (!(currentParams instanceof FrameLayout.LayoutParams)) {
+            return;
+        }
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) currentParams;
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.leftMargin = Math.round(left);
+        params.topMargin = Math.round(top);
+        view.setTranslationX(0f);
+        view.setTranslationY(0f);
+        view.setLayoutParams(params);
     }
 
     private void clearMovePreviews() {
+        movePreviewGeneration++;
         for (View previewView : previewViews) {
             ViewGroup parent = (ViewGroup) previewView.getParent();
             if (parent != null) {
@@ -999,43 +1824,192 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updatePieceSelectionStyles() {
+        updatePieceSelectionStyles(false);
+    }
+
+    private void updatePieceSelectionStyles(boolean animateGuidance) {
+        if (pieceViews == null) {
+            return;
+        }
+
+        clearPieceGuides();
+        boolean showGuidance = shouldShowPieceGuidance();
+        int currentTeam = game.getCurrentTeam();
         for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
             for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                TextView pieceView = pieceViews[team][id];
+                PieceStackView pieceView = pieceViews[team][id];
+                pieceView.animate().cancel();
                 boolean selected = team == selectedPreviewTeamId && id == selectedPreviewPieceId;
-                pieceView.setScaleX(selected ? 1.12f : 1f);
-                pieceView.setScaleY(selected ? 1.12f : 1f);
+                boolean legal = showGuidance
+                        && team == currentTeam
+                        && isPieceEligibleForGuidance(team, id);
+                float scale = selected ? 1.12f : legal && !animateGuidance ? 1.03f : 1f;
+                pieceView.setScaleX(scale);
+                pieceView.setScaleY(scale);
+                pieceView.setAlpha(showGuidance
+                        && team == currentTeam
+                        && pieceView.getParent() != null
+                        && !legal ? 0.5f : 1f);
                 pieceView.setElevation(dp(selected ? 10 : 7));
             }
         }
+
+        if (!showGuidance) {
+            return;
+        }
+
+        int guidanceGeneration = pieceGuideGeneration;
+        boardOverlay.post(() -> {
+            if (guidanceGeneration != pieceGuideGeneration || !shouldShowPieceGuidance()) {
+                return;
+            }
+            addPieceGuides(animateGuidance);
+        });
+    }
+
+    private boolean shouldShowPieceGuidance() {
+        return gameStarted
+                && !isAnimatingMove
+                && !game.isGameOver()
+                && !game.getSelectedSteps().isEmpty()
+                && selectedPreviewTeamId == -1
+                && selectedPreviewPieceId == -1;
+    }
+
+    private boolean isPieceEligibleForGuidance(int teamId, int pieceId) {
+        if (teamId != game.getCurrentTeam()) {
+            return false;
+        }
+        PieceStackView pieceView = pieceViews[teamId][pieceId];
+        if (pieceView.getParent() == null || game.getPiece(teamId, pieceId).isFinished) {
+            return false;
+        }
+        return game.previewMove(teamId, pieceId).available;
+    }
+
+    private void addPieceGuides(boolean animateGuidance) {
+        int teamId = game.getCurrentTeam();
+        for (int pieceId = 0; pieceId < YutGameEngine.PIECE_COUNT; pieceId++) {
+            if (!isPieceEligibleForGuidance(teamId, pieceId)) {
+                continue;
+            }
+
+            PieceStackView pieceView = pieceViews[teamId][pieceId];
+            ViewGroup parent = (ViewGroup) pieceView.getParent();
+            View guide = new View(this);
+            guide.setBackground(createPieceGuideDrawable(teamId));
+            guide.setTag("piece_guide_" + teamId + "_" + pieceId);
+
+            if (parent == boardOverlay) {
+                int guideSize = Math.max(dp(52), getBoardPieceViewSize() + dp(4));
+                guide.setElevation(dp(6));
+                guide.setClickable(true);
+                guide.setFocusable(true);
+                guide.setContentDescription(getString(
+                        R.string.selectable_piece_description,
+                        teamName(teamId),
+                        pieceId + 1));
+                final int selectedPieceId = pieceId;
+                guide.setOnClickListener(v -> selectPiece(teamId, selectedPieceId));
+                boardOverlay.addView(guide, new FrameLayout.LayoutParams(guideSize, guideSize));
+                placePieceGuideOnBoard(guide, game.getPiece(teamId, pieceId).position, guideSize);
+            } else if (parent instanceof FrameLayout) {
+                guide.setClickable(false);
+                guide.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                ((FrameLayout) parent).addView(
+                        guide,
+                        0,
+                        new FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                Gravity.CENTER));
+                pieceView.bringToFront();
+            } else {
+                continue;
+            }
+
+            pieceGuideViews.add(guide);
+            animatePieceGuide(guide, pieceView, animateGuidance);
+        }
+    }
+
+    private void placePieceGuideOnBoard(View guide, int logicalNode, int size) {
+        placePieceOnBoardNode(guide, logicalNode, size);
+    }
+
+    private void animatePieceGuide(View guide, View pieceView, boolean animateGuidance) {
+        if (!animateGuidance) {
+            guide.setAlpha(0.58f);
+            guide.setScaleX(1f);
+            guide.setScaleY(1f);
+            pieceView.setScaleX(1.03f);
+            pieceView.setScaleY(1.03f);
+            return;
+        }
+
+        guide.setAlpha(0f);
+        guide.setScaleX(0.72f);
+        guide.setScaleY(0.72f);
+        guide.animate()
+                .alpha(0.66f)
+                .scaleX(1.06f)
+                .scaleY(1.06f)
+                .setInterpolator(new DecelerateInterpolator())
+                .setDuration(230)
+                .withEndAction(() -> guide.animate()
+                        .alpha(0.58f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(160)
+                        .start())
+                .start();
+        pieceView.setScaleX(0.96f);
+        pieceView.setScaleY(0.96f);
+        pieceView.animate()
+                .scaleX(1.1f)
+                .scaleY(1.1f)
+                .setDuration(190)
+                .withEndAction(() -> pieceView.animate()
+                        .scaleX(1.03f)
+                        .scaleY(1.03f)
+                        .setDuration(140)
+                        .start())
+                .start();
+    }
+
+    private void clearPieceGuides() {
+        pieceGuideGeneration++;
+        for (View guide : pieceGuideViews) {
+            guide.animate().cancel();
+            ViewGroup parent = (ViewGroup) guide.getParent();
+            if (parent != null) {
+                parent.removeView(guide);
+            }
+        }
+        pieceGuideViews.clear();
     }
 
     private void moveToWaitSpot(int teamId, int pieceId) {
-        TextView pieceView = pieceViews[teamId][pieceId];
+        PieceStackView pieceView = pieceViews[teamId][pieceId];
         FrameLayout waitSpot = waitSpots[teamId][pieceId];
         if (waitSpot == null) {
             removeFromParent(pieceView);
             return;
         }
         resetPieceViewTransform(pieceView);
+        restorePieceIdentity(pieceView, teamId, pieceId);
         moveViewToParent(pieceView, waitSpot);
 
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER);
         pieceView.setLayoutParams(params);
         resetPieceViewTransform(pieceView);
     }
 
     private void moveToFinishedArea(int teamId, int pieceId) {
-        TextView pieceView = pieceViews[teamId][pieceId];
-        LinearLayout finishedLayout = finishedLayouts[teamId];
+        PieceStackView pieceView = pieceViews[teamId][pieceId];
         resetPieceViewTransform(pieceView);
-        moveViewToParent(pieceView, finishedLayout);
-
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(28), dp(28));
-        params.setMargins(0, 0, dp(4), 0);
-        params.gravity = Gravity.CENTER_VERTICAL;
-        pieceView.setLayoutParams(params);
-        resetPieceViewTransform(pieceView);
+        removeFromParent(pieceView);
+        updateFinishedSummary();
     }
 
     private void moveViewToParent(View view, ViewGroup newParent) {
@@ -1070,17 +2044,42 @@ public class MainActivity extends AppCompatActivity {
         return drawable;
     }
 
+    private GradientDrawable createPreviewRingDrawable() {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.OVAL);
+        drawable.setColor(0x18F8C74E);
+        drawable.setStroke(dp(3), 0xDDF8C74E);
+        return drawable;
+    }
+
+    private GradientDrawable createPieceGuideDrawable(int teamId) {
+        int teamColor = getTeamColor(teamId);
+        int guideColor = Color.argb(
+                220,
+                Color.red(teamColor),
+                Color.green(teamColor),
+                Color.blue(teamColor));
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setShape(GradientDrawable.OVAL);
+        drawable.setColor(0x12FFFFFF);
+        drawable.setStroke(dp(2), guideColor);
+        return drawable;
+
+    }
     private int getBoardPieceSize() {
-        int byBoard = Math.round(boardContainer.getWidth() * 0.10f);
-        return Math.max(dp(32), Math.min(dp(46), byBoard));
+        int boardWidth = boardArt == null ? 0 : boardArt.getWidth();
+        int boardHeight = boardArt == null ? 0 : boardArt.getHeight();
+        if (boardWidth <= 0 || boardHeight <= 0) {
+            boardWidth = boardContainer.getWidth() - boardContainer.getPaddingLeft() - boardContainer.getPaddingRight();
+            boardHeight = boardContainer.getHeight() - boardContainer.getPaddingTop() - boardContainer.getPaddingBottom();
+        }
+        int byBoard = Math.round(Math.min(boardWidth, boardHeight) * 0.105f);
+        int desired = Math.max(dp(34), Math.min(dp(56), byBoard));
+        return Math.max(1, Math.min(desired, Math.round(Math.min(boardWidth, boardHeight) * 0.14f)));
     }
 
-    private float getBoardStackOffsetX(int pieceId) {
-        return ((pieceId % 2) - 0.5f) * dp(7);
-    }
-
-    private float getBoardStackOffsetY(int pieceId) {
-        return ((pieceId / 2) - 0.5f) * dp(7);
+    private int getBoardPieceViewSize() {
+        return Math.max(dp(48), getBoardPieceSize() + dp(10));
     }
 
     private int getStatusColor() {
@@ -1121,30 +2120,88 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private boolean hasLandscapeDrawers() {
+    private boolean hasEdgePanels() {
         return btnToggleInfo != null && btnToggleControls != null;
     }
 
-    private void prepareLandscapeDrawers(boolean resetToDefault) {
-        if (!hasLandscapeDrawers()) {
+    private void bindBoardResizeListener() {
+        View.OnLayoutChangeListener listener = (view, left, top, right, bottom,
+                oldLeft, oldTop, oldRight, oldBottom) -> {
+            int width = right - left;
+            int height = bottom - top;
+            int oldWidth = oldRight - oldLeft;
+            int oldHeight = oldBottom - oldTop;
+            if (width > 0 && height > 0 && (width != oldWidth || height != oldHeight)) {
+                if (isAnimatingMove) {
+                    cancelMovePresentation(false);
+                    boardOverlay.post(() -> {
+                        if (gameStarted) {
+                            restoreGameScreen(textStatus.getText().toString(), textStatus.getCurrentTextColor());
+                            syncControlPanelForNextAction(false);
+                            maybeShowVictory();
+                        }
+                    });
+                }
+                scheduleBoardLayoutRefresh();
+            }
+        };
+        boardArt.addOnLayoutChangeListener(listener);
+        boardOverlay.addOnLayoutChangeListener(listener);
+    }
+
+    private void scheduleBoardLayoutRefresh() {
+        if (boardOverlay == null) {
+            return;
+        }
+        int refreshGeneration = ++boardLayoutRefreshGeneration;
+        int activeLayoutGeneration = layoutGeneration;
+        FrameLayout scheduledOverlay = boardOverlay;
+        scheduledOverlay.postOnAnimation(() -> {
+            if (refreshGeneration != boardLayoutRefreshGeneration
+                    || activeLayoutGeneration != layoutGeneration
+                    || scheduledOverlay != boardOverlay
+                    || edgePanelTransitionRunning) {
+                return;
+            }
+            refreshBoardAfterPanelLayout();
+        });
+    }
+
+    private void focusBoardForDestinationSelection() {
+        if (!hasEdgePanels() || !controlsPanelOpen) {
+            return;
+        }
+        controlsPanelOpen = false;
+        infoPanelOpen = false;
+        applyEdgePanelState(true);
+    }
+
+    private void syncControlPanelForNextAction(boolean animate) {
+        if (!hasEdgePanels() || game.isGameOver()) {
+            return;
+        }
+        boolean shouldOpen = game.isRollAllowed() || !game.getPendingResults().isEmpty();
+        if (controlsPanelOpen == shouldOpen && !infoPanelOpen) {
+            return;
+        }
+        controlsPanelOpen = shouldOpen;
+        infoPanelOpen = false;
+        applyEdgePanelState(animate);
+    }
+    private void prepareEdgePanels(boolean resetToDefault) {
+        if (!hasEdgePanels()) {
             return;
         }
         if (resetToDefault) {
-            landscapeInfoOpen = false;
-            landscapeControlsOpen = true;
+            infoPanelOpen = false;
+            controlsPanelOpen = true;
         }
-        setLandscapeDrawerTabsVisible(true);
-        topPanel.bringToFront();
-        controlPanel.bringToFront();
-        btnToggleInfo.bringToFront();
-        btnToggleControls.bringToFront();
-        setupPanel.bringToFront();
-        topPanel.post(() -> applyLandscapeDrawerState(false));
-        controlPanel.post(() -> applyLandscapeDrawerState(false));
+        setEdgePanelTabsVisible(true);
+        applyEdgePanelState(false);
     }
 
-    private void setLandscapeDrawerTabsVisible(boolean visible) {
-        if (!hasLandscapeDrawers()) {
+    private void setEdgePanelTabsVisible(boolean visible) {
+        if (!hasEdgePanels()) {
             return;
         }
         int visibility = visible ? View.VISIBLE : View.GONE;
@@ -1152,41 +2209,344 @@ public class MainActivity extends AppCompatActivity {
         btnToggleControls.setVisibility(visibility);
     }
 
-    private void applyLandscapeDrawerState(boolean animate) {
-        if (!hasLandscapeDrawers()) {
+    private void applyEdgePanelState(boolean animate) {
+        if (!hasEdgePanels()) {
             return;
         }
 
-        int leftWidth = Math.max(topPanel.getWidth(), dp(226));
-        int rightWidth = Math.max(controlPanel.getWidth(), dp(292));
-        float infoX = landscapeInfoOpen ? 0f : -leftWidth;
-        float controlsX = landscapeControlsOpen ? 0f : rightWidth;
-        float infoTabX = landscapeInfoOpen ? leftWidth : 0f;
-        float controlsTabX = landscapeControlsOpen ? -rightWidth : 0f;
+        ViewGroup root = findViewById(R.id.root_layout);
+        TransitionManager.endTransitions(root);
+        int transitionGeneration = ++edgePanelTransitionGeneration;
+        edgePanelTransitionRunning = animate;
 
-        updateDrawerTabLabel((TextView) btnToggleInfo, landscapeInfoOpen ? "\ub2eb\uae30" : "\uc815\ubcf4");
-        updateDrawerTabLabel((TextView) btnToggleControls, landscapeControlsOpen ? "\ub2eb\uae30" : "\uc785\ub825");
-
+        clearMovePreviews();
+        clearPieceGuides();
         if (animate) {
-            topPanel.animate().translationX(infoX).setDuration(180).start();
-            controlPanel.animate().translationX(controlsX).setDuration(180).start();
-            btnToggleInfo.animate().translationX(infoTabX).setDuration(180).start();
-            btnToggleControls.animate().translationX(controlsTabX).setDuration(180).start();
+            AutoTransition transition = new AutoTransition();
+            transition.setDuration(220L);
+            transition.setInterpolator(new AccelerateDecelerateInterpolator());
+            TransitionManager.beginDelayedTransition(root, transition);
+        }
+
+        topPanel.setTranslationX(0f);
+        topPanel.setTranslationY(0f);
+        controlPanel.setTranslationX(0f);
+        controlPanel.setTranslationY(0f);
+        btnToggleInfo.setTranslationX(0f);
+        btnToggleInfo.setTranslationY(0f);
+        btnToggleControls.setTranslationX(0f);
+        btnToggleControls.setTranslationY(0f);
+
+        topPanel.setVisibility(infoPanelOpen ? View.VISIBLE : View.GONE);
+        controlPanel.setVisibility(controlsPanelOpen ? View.VISIBLE : View.GONE);
+        btnToggleInfo.setVisibility(View.VISIBLE);
+        btnToggleControls.setVisibility(View.VISIBLE);
+        applyBoardPanelConstraints(root);
+        updateDrawerTabLabel(
+                (TextView) btnToggleInfo,
+                getString(infoPanelOpen ? R.string.drawer_close : R.string.info));
+        updateDrawerTabLabel(
+                (TextView) btnToggleControls,
+                getString(controlsPanelOpen ? R.string.drawer_close : R.string.input));
+        btnToggleInfo.setSelected(infoPanelOpen);
+        btnToggleControls.setSelected(controlsPanelOpen);
+
+        topPanel.bringToFront();
+        controlPanel.bringToFront();
+        btnToggleInfo.bringToFront();
+        btnToggleControls.bringToFront();
+        setupPanel.bringToFront();
+
+        long refreshDelay = animate ? 240L : 0L;
+        boardContainer.postDelayed(() -> {
+            if (transitionGeneration != edgePanelTransitionGeneration) {
+                return;
+            }
+            edgePanelTransitionRunning = false;
+            refreshBoardAfterPanelLayout();
+        }, refreshDelay);
+    }
+
+    private void applyBoardPanelConstraints(ViewGroup root) {
+        if (!(root instanceof ConstraintLayout)) {
             return;
         }
 
-        topPanel.animate().cancel();
-        controlPanel.animate().cancel();
-        btnToggleInfo.animate().cancel();
-        btnToggleControls.animate().cancel();
-        topPanel.setTranslationX(infoX);
-        controlPanel.setTranslationX(controlsX);
-        btnToggleInfo.setTranslationX(infoTabX);
-        btnToggleControls.setTranslationX(controlsTabX);
+        ConstraintSet constraints = new ConstraintSet();
+        constraints.clone((ConstraintLayout) root);
+        boolean landscape = getResources().getConfiguration().orientation
+                == Configuration.ORIENTATION_LANDSCAPE;
+        applyPanelTabConstraints(constraints, landscape);
+        applyPanelTabBackgrounds(landscape);
+        if (landscape) {
+            constraints.connect(
+                    R.id.board_container,
+                    ConstraintSet.START,
+                    infoPanelOpen ? R.id.btn_toggle_info : R.id.top_panel,
+                    ConstraintSet.END);
+            constraints.connect(
+                    R.id.board_container,
+                    ConstraintSet.END,
+                    controlsPanelOpen ? R.id.btn_toggle_controls : R.id.control_panel,
+                    ConstraintSet.START);
+        } else {
+            constraints.connect(
+                    R.id.board_container,
+                    ConstraintSet.TOP,
+                    infoPanelOpen ? R.id.btn_toggle_info : R.id.top_panel,
+                    ConstraintSet.BOTTOM);
+            constraints.connect(
+                    R.id.board_container,
+                    ConstraintSet.BOTTOM,
+                    controlsPanelOpen ? R.id.btn_toggle_controls : R.id.control_panel,
+                    ConstraintSet.TOP);
+        }
+        constraints.applyTo((ConstraintLayout) root);
+    }
+
+    private void applyPanelTabConstraints(ConstraintSet constraints, boolean landscape) {
+        clearPanelTabConstraints(constraints, R.id.btn_toggle_info);
+        clearPanelTabConstraints(constraints, R.id.btn_toggle_controls);
+        int[] tabs = {R.id.btn_toggle_info, R.id.btn_toggle_controls};
+
+        if (landscape) {
+            if (infoPanelOpen || controlsPanelOpen) {
+                int panelId = infoPanelOpen ? R.id.top_panel : R.id.control_panel;
+                int panelSide = infoPanelOpen ? ConstraintSet.END : ConstraintSet.START;
+                int tabSide = infoPanelOpen ? ConstraintSet.START : ConstraintSet.END;
+                constraints.connect(R.id.btn_toggle_info, tabSide, panelId, panelSide);
+                constraints.connect(R.id.btn_toggle_controls, tabSide, panelId, panelSide);
+                constraints.createVerticalChain(
+                        ConstraintSet.PARENT_ID,
+                        ConstraintSet.TOP,
+                        ConstraintSet.PARENT_ID,
+                        ConstraintSet.BOTTOM,
+                        tabs,
+                        null,
+                        ConstraintSet.CHAIN_PACKED);
+                constraints.setMargin(R.id.btn_toggle_info, ConstraintSet.BOTTOM, dp(4));
+            } else {
+                constraints.connect(
+                        R.id.btn_toggle_info,
+                        ConstraintSet.START,
+                        R.id.top_panel,
+                        ConstraintSet.END);
+                constraints.connect(
+                        R.id.btn_toggle_controls,
+                        ConstraintSet.END,
+                        R.id.control_panel,
+                        ConstraintSet.START);
+                centerTabVertically(constraints, R.id.btn_toggle_info);
+                centerTabVertically(constraints, R.id.btn_toggle_controls);
+            }
+            return;
+        }
+
+        if (infoPanelOpen || controlsPanelOpen) {
+            int panelId = infoPanelOpen ? R.id.top_panel : R.id.control_panel;
+            int panelSide = infoPanelOpen ? ConstraintSet.BOTTOM : ConstraintSet.TOP;
+            int tabSide = infoPanelOpen ? ConstraintSet.TOP : ConstraintSet.BOTTOM;
+            constraints.connect(R.id.btn_toggle_info, tabSide, panelId, panelSide);
+            constraints.connect(R.id.btn_toggle_controls, tabSide, panelId, panelSide);
+            constraints.createHorizontalChainRtl(
+                    ConstraintSet.PARENT_ID,
+                    ConstraintSet.START,
+                    ConstraintSet.PARENT_ID,
+                    ConstraintSet.END,
+                    tabs,
+                    null,
+                    ConstraintSet.CHAIN_PACKED);
+            constraints.setMargin(R.id.btn_toggle_info, ConstraintSet.END, dp(4));
+        } else {
+            constraints.connect(
+                    R.id.btn_toggle_info,
+                    ConstraintSet.TOP,
+                    R.id.top_panel,
+                    ConstraintSet.BOTTOM);
+            constraints.connect(
+                    R.id.btn_toggle_controls,
+                    ConstraintSet.BOTTOM,
+                    R.id.control_panel,
+                    ConstraintSet.TOP);
+            centerTabHorizontally(constraints, R.id.btn_toggle_info);
+            centerTabHorizontally(constraints, R.id.btn_toggle_controls);
+        }
+    }
+
+    private void clearPanelTabConstraints(ConstraintSet constraints, int viewId) {
+        int[] anchors = {
+                ConstraintSet.LEFT,
+                ConstraintSet.RIGHT,
+                ConstraintSet.START,
+                ConstraintSet.END,
+                ConstraintSet.TOP,
+                ConstraintSet.BOTTOM
+        };
+        for (int anchor : anchors) {
+            constraints.clear(viewId, anchor);
+        }
+    }
+
+    private void centerTabHorizontally(ConstraintSet constraints, int viewId) {
+        constraints.connect(viewId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START);
+        constraints.connect(viewId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
+    }
+
+    private void centerTabVertically(ConstraintSet constraints, int viewId) {
+        constraints.connect(viewId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);
+        constraints.connect(viewId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
+    }
+
+    private void applyPanelTabBackgrounds(boolean landscape) {
+        if (landscape) {
+            btnToggleInfo.setBackgroundResource(controlsPanelOpen
+                    ? R.drawable.shape_drawer_tab_info_right
+                    : R.drawable.shape_drawer_tab_left);
+            btnToggleControls.setBackgroundResource(infoPanelOpen
+                    ? R.drawable.shape_drawer_tab_input_left
+                    : R.drawable.shape_drawer_tab_right);
+            return;
+        }
+
+        btnToggleInfo.setBackgroundResource(controlsPanelOpen
+                ? R.drawable.shape_drawer_tab_info_bottom
+                : R.drawable.shape_drawer_tab_top);
+        btnToggleControls.setBackgroundResource(infoPanelOpen
+                ? R.drawable.shape_drawer_tab_input_top
+                : R.drawable.shape_drawer_tab_bottom);
+    }
+    private void refreshBoardAfterPanelLayout() {
+        if (!gameStarted
+                || isAnimatingMove
+                || boardContainer.getVisibility() != View.VISIBLE
+                || boardOverlay == null
+                || boardOverlay.getWidth() <= 0
+                || boardOverlay.getHeight() <= 0) {
+            return;
+        }
+        renderBoardPiecesNow();
+        updatePieceSelectionStyles(false);
+        updateMovePreviews();
     }
 
     private void updateDrawerTabLabel(TextView tab, String text) {
         tab.setText(text);
+    }
+    private boolean usesCompactWaitingTray() {
+        Configuration configuration = getResources().getConfiguration();
+        int smallestWidth = configuration.smallestScreenWidthDp;
+        if (smallestWidth > 0) {
+            return smallestWidth < 600;
+        }
+        return Math.min(configuration.screenWidthDp, configuration.screenHeightDp) < 600;
+    }
+
+    private boolean isCompactPortrait() {
+        Configuration configuration = getResources().getConfiguration();
+        return configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+                && configuration.screenWidthDp > 0
+                && configuration.screenWidthDp < 600;
+    }
+    private void applyResponsiveSizing() {
+        if (!isCompactPortrait()) {
+            return;
+        }
+
+        View root = findViewById(R.id.root_layout);
+        root.setPadding(dp(8), dp(8), dp(8), dp(8));
+        topPanel.setPadding(dp(10), dp(6), dp(10), dp(6));
+        controlPanel.setPadding(dp(8), dp(6), dp(8), dp(7));
+        setViewWidthIfPresent(R.id.action_log_rail, 48);
+
+        TextView title = findViewById(R.id.text_title);
+        title.setTextSize(18);
+        textStatus.setMinHeight(dp(36));
+        textStatus.setTextSize(14);
+        textStatus.setPadding(dp(12), dp(4), dp(12), dp(4));
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                textStatus,
+                11, 14, 1,
+                TypedValue.COMPLEX_UNIT_SP);
+        setViewHeightIfPresent(R.id.text_status, 52);
+        textTimer.setTextSize(18);
+
+        boolean largeText = getResources().getConfiguration().fontScale >= 1.2f;
+        setViewHeightIfPresent(R.id.turn_tools, 44);
+        setViewHeightIfPresent(R.id.results_row, 44);
+        setViewHeightIfPresent(R.id.yut_row_top, largeText ? 52 : 48);
+        setViewHeightIfPresent(R.id.yut_row_bottom, largeText ? 52 : 48);
+    }
+
+    private void applyCompactActionAutoSizing() {
+        int[] buttonIds = {
+                R.id.btn_time_stop,
+                R.id.btn_end_turn,
+                R.id.btn_undo_roll
+        };
+        for (int id : buttonIds) {
+            TextView button = findViewById(id);
+            if (button == null) {
+                continue;
+            }
+            button.setMaxLines(1);
+            button.setHorizontallyScrolling(false);
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                    button,
+                    8, 13, 1,
+                    TypedValue.COMPLEX_UNIT_SP);
+        }
+    }
+
+    private void applyFontScaleSizing() {
+        float fontScale = getResources().getConfiguration().fontScale;
+        if (fontScale < 1.3f) {
+            return;
+        }
+
+        boolean extraLarge = fontScale >= 1.7f;
+        int rulesHeight = extraLarge ? 92 : 76;
+        int teamButtonHeight = extraLarge ? 92 : 78;
+        int utilityHeight = extraLarge ? 54 : 48;
+        setViewHeightIfPresent(R.id.btn_setup_rules, rulesHeight);
+        setViewHeightIfPresent(R.id.btn_team_2, teamButtonHeight);
+        setViewHeightIfPresent(R.id.btn_team_3, teamButtonHeight);
+        setViewHeightIfPresent(R.id.btn_team_4, teamButtonHeight);
+        setViewHeightIfPresent(R.id.btn_setup_help, utilityHeight);
+        setViewHeightIfPresent(R.id.btn_setup_version, utilityHeight);
+    }
+
+    private void setViewHeightIfPresent(int viewId, int heightDp) {
+        View view = findViewById(viewId);
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams params = view.getLayoutParams();
+        params.height = dp(heightDp);
+        view.setLayoutParams(params);
+    }
+
+    private void setViewWidthIfPresent(int viewId, int widthDp) {
+        View view = findViewById(viewId);
+        if (view == null) {
+            return;
+        }
+        ViewGroup.LayoutParams params = view.getLayoutParams();
+        params.width = dp(widthDp);
+        view.setLayoutParams(params);
+    }
+    private String teamName(int teamId) {
+        return game.getLocalizedTeamName(teamId);
+    }
+
+    private String resultName(int steps) {
+        return game.getLocalizedResultName(steps);
+    }
+
+    private static boolean isKoreanLanguage() {
+        return Locale.KOREAN.getLanguage().equals(Locale.getDefault().getLanguage());
+    }
+    private static String currentLanguageTag() {
+        return isKoreanLanguage() ? "ko" : "en";
     }
 
     private int dp(int value) {
@@ -1203,19 +2563,59 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
                 lastBackPressMillis = now;
-                showToast("\ud55c \ubc88 \ub354 \ub204\ub974\uba74 \uac8c\uc784\uc774 \uc885\ub8cc\ub429\ub2c8\ub2e4.");
+                showToast(getString(R.string.exit_confirm));
                 enterImmersiveMode();
             }
         });
     }
 
+    private void configureEdgeToEdgeWindow() {
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    }
+
+    private void bindSafeAreaInsets() {
+        View root = findViewById(R.id.root_layout);
+        int baseLeft = root.getPaddingLeft();
+        int baseTop = root.getPaddingTop();
+        int baseRight = root.getPaddingRight();
+        int baseBottom = root.getPaddingBottom();
+
+        ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
+            Insets cutout = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout());
+            Insets mandatoryGestures = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.mandatorySystemGestures());
+            int safeLeft = Math.max(cutout.left, mandatoryGestures.left);
+            int safeTop = Math.max(cutout.top, mandatoryGestures.top);
+            int safeRight = Math.max(cutout.right, mandatoryGestures.right);
+            int safeBottom = Math.max(cutout.bottom, mandatoryGestures.bottom);
+            int left = baseLeft + safeLeft;
+            int top = baseTop + safeTop;
+            int right = baseRight + safeRight;
+            int bottom = baseBottom + safeBottom;
+            if (view.getPaddingLeft() != left
+                    || view.getPaddingTop() != top
+                    || view.getPaddingRight() != right
+                    || view.getPaddingBottom() != bottom) {
+                view.setPadding(left, top, right, bottom);
+                scheduleBoardLayoutRefresh();
+            }
+            return windowInsets;
+        });
+        ViewCompat.requestApplyInsets(root);
+    }
+
     private void enterImmersiveMode() {
-        View decorView = getWindow().getDecorView();
-        decorView.setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(
+                getWindow(),
+                getWindow().getDecorView());
+        controller.setSystemBarsBehavior(
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        controller.hide(WindowInsetsCompat.Type.systemBars());
+
+        View root = findViewById(R.id.root_layout);
+        if (root != null) {
+            ViewCompat.requestApplyInsets(root);
+        }
     }
 
     private void showToast(String message) {
@@ -1235,13 +2635,14 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        action.run();
+        if (view.getParent() == null) return;
         view.animate().cancel();
         view.animate()
                 .scaleX(0.96f)
                 .scaleY(0.96f)
                 .setDuration(55)
                 .withEndAction(() -> {
-                    action.run();
                     if (view.getParent() != null) {
                         view.animate().scaleX(1f).scaleY(1f).setDuration(90).start();
                     }
@@ -1256,7 +2657,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         for (int i = 0; i < pieceIds.size(); i++) {
-            TextView pieceView = pieceViews[teamId][pieceIds.get(i)];
+            PieceStackView pieceView = pieceViews[teamId][pieceIds.get(i)];
             boolean last = i == pieceIds.size() - 1;
             pieceView.animate()
                     .scaleX(1.08f)
@@ -1272,14 +2673,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void updateRollInputAvailability() {
+        boolean enabled = gameStarted && !isAnimatingMove && !game.isGameOver();
+        setEnabledIfPresent(R.id.btn_bdo, enabled && game.canAddRoll(-1));
+        setEnabledIfPresent(R.id.btn_do, enabled && game.canAddRoll(1));
+        setEnabledIfPresent(R.id.btn_gae, enabled && game.canAddRoll(2));
+        setEnabledIfPresent(R.id.btn_geol, enabled && game.canAddRoll(3));
+        setEnabledIfPresent(R.id.btn_yut, enabled && game.canAddRoll(4));
+        setEnabledIfPresent(R.id.btn_mo, enabled && game.canAddRoll(5));
+    }
+
     private void setControlsEnabled(boolean enabled) {
-        setEnabledIfPresent(R.id.btn_bdo, enabled);
-        setEnabledIfPresent(R.id.btn_do, enabled);
-        setEnabledIfPresent(R.id.btn_gae, enabled);
-        setEnabledIfPresent(R.id.btn_geol, enabled);
-        setEnabledIfPresent(R.id.btn_yut, enabled);
-        setEnabledIfPresent(R.id.btn_mo, enabled);
-        setEnabledIfPresent(R.id.btn_undo_roll, enabled);
+        setEnabledIfPresent(R.id.btn_bdo, enabled && game.canAddRoll(-1));
+        setEnabledIfPresent(R.id.btn_do, enabled && game.canAddRoll(1));
+        setEnabledIfPresent(R.id.btn_gae, enabled && game.canAddRoll(2));
+        setEnabledIfPresent(R.id.btn_geol, enabled && game.canAddRoll(3));
+        setEnabledIfPresent(R.id.btn_yut, enabled && game.canAddRoll(4));
+        setEnabledIfPresent(R.id.btn_mo, enabled && game.canAddRoll(5));
         setEnabledIfPresent(R.id.btn_restart, enabled);
 
         for (int i = 0; i < resultLayout.getChildCount(); i++) {
@@ -1287,12 +2697,35 @@ public class MainActivity extends AppCompatActivity {
         }
         setEnabledIfPresent(R.id.btn_end_turn, enabled);
         btnTimeStop.setEnabled(enabled && turnDurationMillis > 0L);
+        updateUndoActionAvailability();
+    }
+
+    private void updateUndoActionAvailability() {
+        TextView undoButton = findViewById(R.id.btn_undo_roll);
+        if (undoButton == null) {
+            return;
+        }
+        boolean canUndoMove = moveUndoState != null;
+        boolean canUndoRoll = !game.isGameOver() && !game.getPendingResults().isEmpty();
+        undoButton.setText(canUndoMove ? R.string.undo_move : R.string.undo_last);
+        undoButton.setContentDescription(getString(
+                canUndoMove ? R.string.undo_move : R.string.undo_last));
+        undoButton.setEnabled(gameStarted
+                && !isAnimatingMove
+                && (canUndoMove || canUndoRoll));
     }
 
     private void setEnabledIfPresent(int viewId, boolean enabled) {
         View view = findViewById(viewId);
         if (view != null) {
             view.setEnabled(enabled);
+        }
+    }
+
+    private void setContentDescriptionIfPresent(int viewId, String description) {
+        View view = findViewById(viewId);
+        if (view != null) {
+            view.setContentDescription(description);
         }
     }
 
@@ -1324,6 +2757,9 @@ public class MainActivity extends AppCompatActivity {
         view.setScaleX(1f);
         view.setScaleY(1f);
         view.setAlpha(1f);
+        if (view instanceof PieceStackView) {
+            ((PieceStackView) view).setCollapseProgress(0f);
+        }
     }
 
     private void addTurnLog(String message) {
@@ -1362,29 +2798,48 @@ public class MainActivity extends AppCompatActivity {
         }
         actionLogRail.removeAllViews();
 
-        int maxVisible = Math.min(turnLog.size(), 5);
-        if (maxVisible == 0) {
-            ImageView empty = createActionLogItem(R.drawable.ic_log_history, getResources().getColor(R.color.text_secondary));
-            empty.setContentDescription("\uae30\ub85d \uc5c6\uc74c");
-            empty.setOnClickListener(v -> showTurnLogDialog());
-            actionLogRail.addView(empty);
-            return;
-        }
-
-        for (int i = 0; i < maxVisible; i++) {
-            String entry = turnLog.get(i);
-            ImageView item = createActionLogItem(getActionLogIconRes(entry), getActionLogColor(entry));
-            item.setContentDescription(entry);
-            final int index = i;
-            item.setOnClickListener(v -> showTurnLogEntryDialog(index));
-            actionLogRail.addView(item);
-            if (i == 0) {
-                item.setScaleX(0.86f);
-                item.setScaleY(0.86f);
-                item.setAlpha(0.55f);
-                item.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(160).start();
+        boolean hasEntry = !turnLog.isEmpty();
+        ImageView item = createActionLogItem(
+                hasEntry ? getActionLogIconRes(turnLog.get(0)) : R.drawable.ic_log_history,
+                hasEntry ? getActionLogColor(turnLog.get(0)) : getResources().getColor(R.color.text_secondary));
+        item.setContentDescription(hasEntry ? turnLog.get(0) : getString(R.string.history_none));
+        item.setOnClickListener(v -> {
+            if (hasEntry) {
+                showTurnLogEntryDialog(0);
+            } else {
+                showTurnLogDialog();
             }
+        });
+        actionLogRail.addView(item);
+
+        TextView label = new TextView(this);
+        label.setText(R.string.history);
+        label.setTextColor(getResources().getColor(R.color.text_primary));
+        label.setTypeface(Typeface.DEFAULT_BOLD);
+        label.setGravity(Gravity.CENTER);
+        label.setIncludeFontPadding(false);
+        label.setMaxLines(1);
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                label,
+                9, 11, 1,
+                TypedValue.COMPLEX_UNIT_SP);
+        if (usesCompactWaitingTray()
+                || getResources().getConfiguration().fontScale >= 1.4f) {
+            label.setVisibility(View.GONE);
+            actionLogRail.setGravity(Gravity.CENTER);
         }
+        actionLogRail.addView(label, new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1f));
+        actionLogRail.setContentDescription(hasEntry
+                ? getString(R.string.history_recent_description)
+                : getString(R.string.history_none));
+
+        item.setScaleX(0.86f);
+        item.setScaleY(0.86f);
+        item.setAlpha(0.55f);
+        item.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(160).start();
     }
 
     private ImageView createActionLogItem(int iconResId, int color) {
@@ -1393,13 +2848,13 @@ public class MainActivity extends AppCompatActivity {
         item.setImageResource(iconResId);
         item.setColorFilter(Color.WHITE);
         item.setScaleType(ImageView.ScaleType.CENTER);
-        item.setPadding(dp(8), dp(8), dp(8), dp(8));
+        item.setPadding(dp(7), dp(7), dp(7), dp(7));
         item.setElevation(dp(7));
         item.setClickable(true);
         item.setFocusable(true);
 
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(34), dp(34));
-        params.setMargins(0, dp(3), 0, dp(3));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(32), dp(32));
+        params.setMargins(dp(3), 0, dp(2), 0);
         item.setLayoutParams(params);
         return item;
     }
@@ -1416,76 +2871,60 @@ public class MainActivity extends AppCompatActivity {
         if (entry == null) {
             return R.drawable.ic_log_history;
         }
-        if (entry.contains("\uc2b9\ub9ac")) {
-            return R.drawable.ic_log_finish;
-        }
-        if (entry.contains("\uc644\uc8fc")) {
-            return R.drawable.ic_log_finish;
-        }
-        if (entry.contains("\uc7a1\uc74c")) {
-            return R.drawable.ic_log_capture;
-        }
-        if (entry.contains("\uc774\ub3d9")) {
-            return R.drawable.ic_log_move;
-        }
-        if (entry.contains("\ucde8\uc18c")) {
+        if (entry.contains(getString(R.string.log_keyword_undo))) {
             return R.drawable.ic_log_undo;
         }
-        if (entry.contains("\ud134 \uc885\ub8cc")) {
+        if (entry.contains(getString(R.string.log_keyword_victory))
+                || entry.contains(getString(R.string.log_keyword_finished))) {
+            return R.drawable.ic_log_finish;
+        }
+        if (entry.contains(getString(R.string.log_keyword_captured))) {
+            return R.drawable.ic_log_capture;
+        }
+        if (entry.contains(getString(R.string.log_keyword_moved))) {
+            return R.drawable.ic_log_move;
+        }
+        if (entry.contains(getString(R.string.log_keyword_undo))) {
+            return R.drawable.ic_log_undo;
+        }
+        if (entry.contains(getString(R.string.log_keyword_turn_end))) {
             return R.drawable.ic_log_turn_end;
         }
-        if (entry.contains("\uc0c8 \uac8c\uc784")) {
+        if (entry.contains(getString(R.string.log_keyword_new_game))) {
             return R.drawable.ic_log_start;
         }
-        String[] resultNames = {
-                "\ube7d\ub3c4",
-                "\ub3c4",
-                "\uac1c",
-                "\uac78",
-                "\uc737",
-                "\ubaa8"
-        };
-        for (String name : resultNames) {
-            if (entry.contains(name + " \uc785\ub825")) {
-                return R.drawable.ic_log_yut;
-            }
+        if (entry.contains(getString(R.string.log_keyword_roll))) {
+            return R.drawable.ic_log_yut;
         }
         return R.drawable.ic_log_history;
     }
-
     private int getActionLogColor(String entry) {
         if (entry != null) {
             int teamId = parseTeamId(entry);
             if (teamId >= 0) {
                 return getTeamColor(teamId);
             }
-            if (entry.contains("\uc2b9\ub9ac") || entry.contains("\uc644\uc8fc")) {
+            if (entry.contains(getString(R.string.log_keyword_victory))
+                    || entry.contains(getString(R.string.log_keyword_finished))) {
                 return getResources().getColor(R.color.accent_gold);
             }
-            if (entry.contains("\ucde8\uc18c")) {
+            if (entry.contains(getString(R.string.log_keyword_undo))) {
                 return getResources().getColor(R.color.text_secondary);
             }
         }
         return getResources().getColor(R.color.text_primary);
     }
-
     private int parseTeamId(String entry) {
-        if (entry == null || entry.length() < 2) {
+        if (entry == null) {
             return -1;
         }
-        int teamMarker = entry.indexOf("\ud300");
-        if (teamMarker <= 0) {
-            return -1;
+        for (int teamId = 0; teamId < game.getTeamCount(); teamId++) {
+            if (entry.startsWith(teamName(teamId) + ":")) {
+                return teamId;
+            }
         }
-        try {
-            int teamNumber = Integer.parseInt(entry.substring(0, teamMarker).trim());
-            int teamId = teamNumber - 1;
-            return teamId >= 0 && teamId < game.getTeamCount() ? teamId : -1;
-        } catch (NumberFormatException ignored) {
-            return -1;
-        }
+        return -1;
     }
-
     private void showTurnLogDialog() {
         beginTimerDialogHold();
         YutDialogs.showTurnLog(
@@ -1516,77 +2955,69 @@ public class MainActivity extends AppCompatActivity {
     private String getSelectedStepsText() {
         List<Integer> steps = game.getSelectedSteps();
         if (steps.isEmpty()) {
-            return "\uc774\ub3d9";
+            return getString(R.string.log_move_fallback);
         }
         ArrayList<String> names = new ArrayList<>();
         for (int step : steps) {
-            names.add(YutGameEngine.getResultName(step));
+            names.add(resultName(step));
         }
         return String.join("+", names);
     }
 
     private String formatMoveLog(YutGameEngine.MoveResult result, String planText) {
-        StringBuilder builder = new StringBuilder();
-        builder.append(YutGameEngine.getTeamName(result.teamId))
-                .append(": ")
-                .append(formatPieceIds(result.usedPieceIds))
-                .append(" ")
-                .append(planText)
-                .append(" \uc774\ub3d9");
+        StringBuilder builder = new StringBuilder(getString(
+                R.string.log_move_base,
+                teamName(result.teamId),
+                formatPieceIds(result.usedPieceIds),
+                planText));
+        builder.append(getString(R.string.log_location_suffix,
+                boardLocationName(result.startNode), boardLocationName(result.targetNode)));
         if (!result.caughtPieces.isEmpty()) {
-            builder.append(", \uc0c1\ub300 ")
-                    .append(result.caughtPieces.size())
-                    .append("\uac1c \uc7a1\uc74c");
+            builder.append(getString(R.string.log_capture_suffix, result.caughtPieces.size()));
         }
         if (!result.finishedPieceIds.isEmpty()) {
-            builder.append(", ")
-                    .append(result.finishedPieceIds.size())
-                    .append("\uac1c \uc644\uc8fc");
+            builder.append(getString(R.string.log_finish_suffix, result.finishedPieceIds.size()));
         }
         if (result.gameWon) {
-            builder.append(", \uc2b9\ub9ac");
+            builder.append(getString(R.string.log_victory_suffix));
         }
         return builder.toString();
     }
 
+    private String boardLocationName(int node) {
+        if (node == BoardPath.START_NODE) return getString(R.string.location_waiting);
+        if (node == BoardPath.END_NODE) return getString(R.string.location_finished);
+        int spot = game.visualSpotFor(node);
+        String[] names = getResources().getStringArray(R.array.board_spot_names);
+        return spot >= 0 && spot < names.length ? names[spot] : getString(R.string.location_board);
+    }
     private String formatPieceIds(List<Integer> pieceIds) {
         if (pieceIds == null || pieceIds.isEmpty()) {
-            return "\ub9d0";
+            return getString(R.string.piece_ids_fallback);
         }
-        StringBuilder builder = new StringBuilder();
+        StringBuilder ids = new StringBuilder();
         for (int i = 0; i < pieceIds.size(); i++) {
             if (i > 0) {
-                builder.append(",");
+                ids.append(",");
             }
-            builder.append(pieceIds.get(i) + 1);
+            ids.append(pieceIds.get(i) + 1);
         }
-        builder.append("\ubc88 \ub9d0");
-        return builder.toString();
+        return getString(R.string.piece_ids, ids.toString());
     }
-
     private String buildGameOverMessage(YutGameEngine.MoveResult result) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("\ubaa8\ub4e0 \ub9d0\uc774 \uc644\uc8fc\ud588\uc2b5\ub2c8\ub2e4.\n\n")
-                .append("\uc2b9\ub9ac \ud300: ")
-                .append(YutGameEngine.getTeamName(result.teamId))
-                .append('\n')
-                .append("\uc644\uc8fc: ")
-                .append(countFinishedPieces(result.teamId))
-                .append("/")
-                .append(YutGameEngine.PIECE_COUNT)
-                .append('\n')
-                .append("\ucd5c\uadfc \uae30\ub85d: ")
-                .append(turnLog.size())
-                .append("\uac1c");
-
+        String message = getString(
+                R.string.game_over_summary,
+                teamName(result.teamId),
+                countFinishedPieces(result.teamId),
+                YutGameEngine.PIECE_COUNT,
+                turnLog.size());
         if (!turnLog.isEmpty()) {
-            builder.append("\n\n\ub9c8\uc9c0\ub9c9 \uc9c4\ud589\n")
-                    .append(YutDialogs.buildTurnLogText(turnLog, Math.min(4, turnLog.size())));
+            message += getString(
+                    R.string.game_over_last_actions,
+                    YutDialogs.buildTurnLogText(turnLog, Math.min(4, turnLog.size())));
         }
-
-        return builder.toString();
+        return message;
     }
-
     private int countFinishedPieces(int teamId) {
         int count = 0;
         for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
@@ -1631,8 +3062,36 @@ public class MainActivity extends AppCompatActivity {
                     public void onShowLog() {
                         showTurnLogDialog();
                     }
+
+                    @Override
+                    public void onShowHelp() {
+                        YutDialogs.showHowToPlay(MainActivity.this, () -> {
+                        });
+                    }
+
+                    @Override
+                    public void onCheckUpdates() {
+                        openPlayStoreListing();
+                    }
                 },
                 this::endTimerDialogHold);
+    }
+
+    private void showGameRulesDialog() {
+        beginTimerDialogHold();
+        YutDialogs.showGameRules(
+                this,
+                getTurnDurationIndex(),
+                turnIndex -> applySettings(
+                        GameStateStore.TURN_DURATION_OPTIONS_MILLIS[turnIndex],
+                        feedback.isSoundEnabled(),
+                        feedback.isVibrationEnabled()),
+                this::endTimerDialogHold);
+    }
+
+    private void showHowToPlayDialog() {
+        beginTimerDialogHold();
+        YutDialogs.showHowToPlay(this, this::endTimerDialogHold);
     }
 
     private void beginTimerDialogHold() {
@@ -1645,9 +3104,10 @@ public class MainActivity extends AppCompatActivity {
         if (timerDialogHoldCount > 0) {
             timerDialogHoldCount--;
         }
-        timerCheckpointEpochMillis = System.currentTimeMillis();
+        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         updateTimerView();
         persistGameState();
+        maybeShowPendingUpdate();
     }
 
     private void applySettings(long selectedTurnDurationMillis, boolean soundEnabled, boolean vibrationEnabled) {
@@ -1657,11 +3117,15 @@ public class MainActivity extends AppCompatActivity {
         feedback.setEnabled(soundEnabled, vibrationEnabled);
 
         if (durationChanged) {
+            List<YutGameEngine.MoveChoice> choices = game.getMoveChoices();
+            if (!choices.isEmpty()) bonusTimeBaselineResultId = choices.get(choices.size() - 1).resultId;
+            moveUndoState = null;
+            updateUndoActionAvailability();
             if (gameStarted && setupPanel.getVisibility() != View.VISIBLE && !game.isGameOver()) {
                 remainingTurnMillis = turnDurationMillis;
                 timeExpiredNotified = false;
                 isTimerPaused = keepPaused;
-                timerCheckpointEpochMillis = System.currentTimeMillis();
+                timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
                 updateTimerView();
             } else {
                 remainingTurnMillis = turnDurationMillis;
@@ -1670,10 +3134,11 @@ public class MainActivity extends AppCompatActivity {
         } else {
             updateTimerView();
         }
+        updateSetupRuleSummary();
 
         persistGameState();
         playFeedback(GameFeedback.TAP);
-        showToast("\uc124\uc815\uc744 \uc800\uc7a5\ud588\uc2b5\ub2c8\ub2e4.");
+        showToast(getString(R.string.settings_saved));
     }
 
     private void clearTurnLog() {
@@ -1681,15 +3146,26 @@ public class MainActivity extends AppCompatActivity {
         updateTurnLogView();
         persistGameState();
         playFeedback(GameFeedback.TAP);
-        showToast("\uae30\ub85d\uc744 \ucd08\uae30\ud654\ud588\uc2b5\ub2c8\ub2e4.");
+        showToast(getString(R.string.history_cleared));
     }
 
     private int getTurnDurationIndex() {
         return stateStore.getTurnDurationIndex(turnDurationMillis);
     }
 
-    private String getTurnDurationLabel() {
-        return stateStore.getTurnDurationLabel(turnDurationMillis);
+    private void updateSetupRuleSummary() {
+        if (textSetupRuleSummary == null) {
+            return;
+        }
+        String[] labels = getResources().getStringArray(R.array.turn_duration_labels);
+        int index = Math.max(0, Math.min(labels.length - 1, getTurnDurationIndex()));
+        String summary = getString(R.string.game_rules_summary, labels[index]);
+        textSetupRuleSummary.setText(summary);
+
+        View rulesButton = findViewById(R.id.btn_setup_rules);
+        if (rulesButton != null) {
+            rulesButton.setContentDescription(getString(R.string.change_game_rules) + ". " + summary);
+        }
     }
 
     private boolean restorePersistedGameState() {
@@ -1700,20 +3176,25 @@ public class MainActivity extends AppCompatActivity {
         }
 
         gameStarted = appState.gameStarted;
+        restoredGameSavedAtEpochMillis = appState.savedAtEpochMillis;
         game.restoreState(appState.engineState);
         remainingTurnMillis = turnDurationMillis <= 0L ? 0L : Math.max(0L, appState.remainingTurnMillis);
         isTimerPaused = appState.timerPaused;
         timeExpiredNotified = appState.timeExpiredNotified;
-        timerCheckpointEpochMillis = appState.timerCheckpointEpochMillis;
+        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         selectedPreviewTeamId = appState.selectedTeamId;
         selectedPreviewPieceId = appState.selectedPieceId;
         if (!isValidPreviewSelection(selectedPreviewTeamId, selectedPreviewPieceId)) {
             selectedPreviewTeamId = -1;
             selectedPreviewPieceId = -1;
         }
-        restoredStatusMessage = appState.statusMessage;
+        boolean languageChanged = !currentLanguageTag().equals(appState.languageTag);
+        restoredStatusMessage = languageChanged ? "" : appState.statusMessage;
         restoredStatusColor = appState.statusColor;
-        restoreTurnLog(appState.turnLog);
+        restoreTurnLog(languageChanged ? new String[0] : appState.turnLog);
+        moveUndoState = languageChanged ? null : appState.moveUndoState;
+        victoryPending = appState.victoryPending;
+        bonusTimeBaselineResultId = appState.bonusTimeBaselineResultId;
         return true;
     }
 
@@ -1737,8 +3218,12 @@ public class MainActivity extends AppCompatActivity {
 
         GameStateStore.AppState appState = new GameStateStore.AppState();
         appState.gameStarted = gameStarted;
+        appState.victoryPending = victoryPending;
+        appState.bonusTimeBaselineResultId = bonusTimeBaselineResultId;
+        appState.savedAtEpochMillis = restoredGameSavedAtEpochMillis;
+        appState.preserveSavedAtEpochMillis = savedGameChoicePending;
         appState.remainingTurnMillis = remainingTurnMillis;
-        appState.timerCheckpointEpochMillis = timerCheckpointEpochMillis;
+        appState.timerCheckpointEpochMillis = System.currentTimeMillis();
         appState.timerPaused = isTimerPaused;
         appState.timeExpiredNotified = timeExpiredNotified;
         appState.selectedTeamId = selectedPreviewTeamId;
@@ -1749,7 +3234,9 @@ public class MainActivity extends AppCompatActivity {
             appState.statusColor = textStatus.getCurrentTextColor();
         }
         appState.turnLog = getTurnLogSnapshot();
+        appState.languageTag = currentLanguageTag();
         appState.engineState = game.saveState();
+        appState.moveUndoState = moveUndoState;
         stateStore.save(settings, appState);
     }
 
@@ -1759,12 +3246,62 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private boolean expireTimedTurnBeforeAction() {
+        if (!gameStarted
+                || turnDurationMillis <= 0L
+                || game.isGameOver()
+                || isTimerHeldForAnimation
+                || timerDialogHoldCount > 0) {
+            return false;
+        }
+
+        syncTimerToNow();
+        if (remainingTurnMillis > 0L) {
+            return false;
+        }
+
+        int teamBeforeExpiration = game.getCurrentTeam();
+        finishTurnAfterTimeout();
+        return teamBeforeExpiration != game.getCurrentTeam();
+    }
+
+    private void finishTurnAfterTimeout() {
+        if (!gameStarted
+                || turnDurationMillis <= 0L
+                || remainingTurnMillis > 0L
+                || game.isGameOver()
+                || isTimerHeldForAnimation
+                || timerDialogHoldCount > 0) {
+            return;
+        }
+
+        String endedTeamName = teamName(game.getCurrentTeam());
+        YutGameEngine.ActionResult result = game.endTurn();
+        if (!result.success) {
+            return;
+        }
+
+        moveUndoState = null;
+        clearSelectedPiece();
+        clearMovePreviews();
+        resultLayout.removeAllViews();
+        rebuildCurrentWaitingArea();
+        updateRollInputAvailability();
+        startTurnTimer();
+        textStatus.setText(getString(R.string.timer_turn_ended, teamName(game.getCurrentTeam())));
+        textStatus.setTextColor(getStatusColor());
+        addTurnLog(getString(R.string.log_turn_timeout, endedTeamName));
+        playFeedback(GameFeedback.TAP);
+        syncControlPanelForNextAction(true);
+        persistGameState();
+    }
+
     private void startTurnTimer() {
         isTimerHeldForAnimation = false;
         remainingTurnMillis = turnDurationMillis;
         isTimerPaused = false;
         timeExpiredNotified = false;
-        timerCheckpointEpochMillis = System.currentTimeMillis();
+        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         updateTimerView();
     }
 
@@ -1790,14 +3327,14 @@ public class MainActivity extends AppCompatActivity {
         }
         syncTimerToNow();
         isTimerPaused = !isTimerPaused;
-        timerCheckpointEpochMillis = System.currentTimeMillis();
+        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         updateTimerView();
         playFeedback(GameFeedback.TAP);
         persistGameState();
     }
 
     private boolean shouldTimerRun() {
-        return gameStarted
+        return isActivityResumed && gameStarted
                 && !isTimerPaused
                 && !isTimerHeldForAnimation
                 && timerDialogHoldCount == 0
@@ -1806,28 +3343,29 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void syncTimerToNow() {
-        long now = System.currentTimeMillis();
-        if (timerCheckpointEpochMillis <= 0L) {
-            timerCheckpointEpochMillis = now;
+        long now = SystemClock.elapsedRealtime();
+        if (timerCheckpointElapsedMillis <= 0L) {
+            timerCheckpointElapsedMillis = now;
             return;
         }
 
         if (shouldTimerRun()) {
-            long elapsed = Math.max(0L, now - timerCheckpointEpochMillis);
+            long elapsed = Math.max(0L, now - timerCheckpointElapsedMillis);
             remainingTurnMillis = Math.max(0L, remainingTurnMillis - elapsed);
         }
-        timerCheckpointEpochMillis = now;
+        timerCheckpointElapsedMillis = now;
     }
 
     private void updateTimerView() {
+        updateKeepScreenOn();
         if (textTimer == null || btnTimeStop == null) {
             return;
         }
 
         if (turnDurationMillis <= 0L) {
-            textTimer.setText("\ubb34\uc81c\ud55c");
+            textTimer.setText(R.string.unlimited);
             textTimer.setTextColor(getResources().getColor(R.color.text_primary));
-            btnTimeStop.setText("\uc81c\ud55c \uc5c6\uc74c");
+            btnTimeStop.setText(R.string.no_time_limit);
             resetPauseButtonStyle();
             btnTimeStop.setEnabled(false);
             return;
@@ -1838,37 +3376,43 @@ public class MainActivity extends AppCompatActivity {
         long minutes = seconds / 60;
         long displaySeconds = seconds % 60;
         String timeText = String.format(Locale.ROOT, "%02d:%02d", minutes, displaySeconds);
+        textTimer.setText(timeText);
 
         if (isTimerPaused) {
-            textTimer.setText("\uc77c\uc2dc\uc815\uc9c0  " + timeText);
             textTimer.setTextColor(getResources().getColor(R.color.button_end_pressed));
-            btnTimeStop.setText("\uacc4\uc18d\ud558\uae30");
+            textTimer.setContentDescription(getString(R.string.timer_paused_description, timeText));
+            btnTimeStop.setText(R.string.resume_time);
             btnTimeStop.setTextColor(getResources().getColor(R.color.ink_black));
             btnTimeStop.setBackgroundResource(R.drawable.shape_button_pause_active);
             btnTimeStop.setBackgroundTintList(null);
         } else if (timerDialogHoldCount > 0) {
-            textTimer.setText("\uc124\uc815 \uc911  " + timeText);
             textTimer.setTextColor(getResources().getColor(R.color.button_end_pressed));
-            btnTimeStop.setText("\uc2dc\uac04 \uc815\uc9c0");
+            textTimer.setContentDescription(getString(R.string.timer_settings_description, timeText));
+            btnTimeStop.setText(R.string.pause_time);
             btnTimeStop.setTextColor(getResources().getColor(R.color.text_primary));
             btnTimeStop.setBackgroundResource(R.drawable.shape_button_utility);
             btnTimeStop.setBackgroundTintList(null);
-        } else if (remainingTurnMillis <= 10_000L) {
-            textTimer.setText(timeText);
-            textTimer.setTextColor(getResources().getColor(R.color.btn_restart));
-            btnTimeStop.setText("\uc2dc\uac04 \uc815\uc9c0");
-            resetPauseButtonStyle();
-        } else if (remainingTurnMillis <= 30_000L) {
-            textTimer.setText(timeText);
-            textTimer.setTextColor(getResources().getColor(R.color.preview_glow));
-            btnTimeStop.setText("\uc2dc\uac04 \uc815\uc9c0");
-            resetPauseButtonStyle();
         } else {
-            textTimer.setText(timeText);
-            textTimer.setTextColor(getResources().getColor(R.color.text_primary));
-            btnTimeStop.setText("\uc2dc\uac04 \uc815\uc9c0");
+            int timerColor = remainingTurnMillis <= 10_000L
+                    ? R.color.timer_urgent
+                    : remainingTurnMillis <= 30_000L
+                            ? R.color.timer_warning
+                            : R.color.text_primary;
+            textTimer.setTextColor(getResources().getColor(timerColor));
+            textTimer.setContentDescription(getString(R.string.timer_remaining_description, timeText));
+            btnTimeStop.setText(R.string.pause_time);
             resetPauseButtonStyle();
         }
+    }
+
+    private void updateKeepScreenOn() {
+        boolean keepOn = isActivityResumed && gameStarted
+                && setupPanel != null
+                && setupPanel.getVisibility() != View.VISIBLE
+                && !game.isGameOver()
+                && !isTimerPaused
+                && timerDialogHoldCount == 0;
+        getWindow().getDecorView().setKeepScreenOn(keepOn);
     }
 
     private void resetPauseButtonStyle() {
