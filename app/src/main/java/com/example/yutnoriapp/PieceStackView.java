@@ -72,7 +72,8 @@ public final class PieceStackView extends View {
     void configureAppearance(int colorId, int shape, int pieceNumber) {
         this.shape = TeamAppearance.isShape(shape) ? shape : TeamAppearance.CIRCLE;
         textPaint.setColor(TeamAppearance.ink(colorId));
-        strokePaint.setColor(TeamAppearance.outline(colorId));
+        strokePaint.setColor(TeamAppearance.fill(colorId));
+        haloPaint.setColor(TeamAppearance.fill(colorId));
         pendingOutlinePaint.setStyle(Paint.Style.STROKE);
         pendingOutlinePaint.setStrokeWidth(dp(1.2f));
         pendingOutlinePaint.setColor(TeamAppearance.label(colorId));

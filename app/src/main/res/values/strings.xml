@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="roll_controls">Move controls</string>
     <string name="app_name">Yutnori</string>
     <string name="settings">Settings</string>
     <string name="recent_history">Recent history</string>

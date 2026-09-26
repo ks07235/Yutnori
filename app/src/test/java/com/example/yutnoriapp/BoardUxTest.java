@@ -24,6 +24,7 @@ import org.robolectric.RuntimeEnvironment;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.GraphicsMode;
+import org.robolectric.shadows.ShadowChoreographer;
 import static org.junit.Assert.*;
 import static org.robolectric.Shadows.shadowOf;
 
@@ -169,6 +170,144 @@ public class BoardUxTest {
         }
     }
 
+    @Test public void panelStateChangesOnlyWhenUserTogglesIt() {
+        call("handleYutInput", 1);
+        call("selectPiece", 0, 0);
+        settle();
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.control_panel).getVisibility());
+        call("commitSelectedMove");
+        settle();
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.control_panel).getVisibility());
+        activity.findViewById(R.id.btn_toggle_controls).performClick();
+        settle();
+        call("handleYutInput", 1);
+        call("selectPiece", game().getCurrentTeam(), 0);
+        settle();
+        call("commitSelectedMove");
+        settle();
+        assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
+        controller.recreate();
+        activity = controller.get();
+        settle();
+        assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
+    }
+
+    @Test public void unlimitedModeRemovesTimerRowAndRestoresItForTimedPlay() throws Exception {
+        settings(0L);
+        settle();
+        assertEquals(View.GONE, activity.findViewById(R.id.text_timer).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.btn_time_stop).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.turn_tools).getVisibility());
+        assertSame(activity.findViewById(R.id.results_row), activity.findViewById(R.id.btn_end_turn).getParent());
+        assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
+        assertTrue(bounds(activity.findViewById(R.id.btn_do)).left >= bounds(activity.findViewById(R.id.board_container)).right);
+        screenshot("unlimited-controls");
+        activity.findViewById(R.id.btn_end_turn).performClick();
+        settle();
+        assertEquals(1, game().getCurrentTeam());
+        settings(180000L);
+        settle();
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.text_timer).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_time_stop).getVisibility());
+        assertSame(activity.findViewById(R.id.turn_tools), activity.findViewById(R.id.btn_end_turn).getParent());
+    }
+
+    @Test public void finishAnimationTravelsViaArrivalNodeIntoTheGoalTile() throws Exception {
+        game().getPiece(0, 0).position = 14;
+        call("handleYutInput", 2);
+        call("selectPiece", 0, 0);
+        settle();
+        ShadowChoreographer.setPaused(true);
+        call("commitSelectedMove");
+        advanceFrames(120);
+        assertEquals(true, field(activity, "isAnimatingMove"));
+        assertNull(field(activity, "finishAnimationView"));
+        advanceFrames(220);
+        View ghost = (View) field(activity, "finishAnimationView");
+        assertNotNull("The piece should leave the arrival node towards the goal", ghost);
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.finish_destination).getVisibility());
+        float initialY = ghost.getY();
+        advanceFrames(180);
+        assertTrue("The piece must visibly travel down into the goal", ghost.getY() > initialY);
+        screenshot("finish-animation");
+        advanceFrames(1000);
+        settle();
+        assertNull(field(activity, "finishAnimationView"));
+        assertEquals(false, field(activity, "isAnimatingMove"));
+        assertTrue(game().getPiece(0, 0).isFinished);
+        assertEquals(View.GONE, activity.findViewById(R.id.finish_destination).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.control_panel).getVisibility());
+    }
+
+    @Test public void backgroundAndRelaunchDuringFinishPreserveCompletionAndRemoveGhost() {
+        game().getPiece(0, 0).position = 15;
+        call("handleYutInput", 1);
+        call("selectPiece", 0, 0);
+        settle();
+        ShadowChoreographer.setPaused(true);
+        call("commitSelectedMove");
+        advanceFrames(200);
+        assertNotNull(field(activity, "finishAnimationView"));
+        controller.pause();
+        assertNull(field(activity, "finishAnimationView"));
+        controller.stop().destroy();
+        ShadowChoreographer.setPaused(false);
+        controller = Robolectric.buildActivity(MainActivity.class).setup().visible();
+        activity = controller.get();
+        settle();
+        assertTrue(game().getPiece(0, 0).isFinished);
+        assertNull(field(activity, "finishAnimationView"));
+        assertEquals(false, field(activity, "isAnimatingMove"));
+        assertEquals(View.GONE, activity.findViewById(R.id.finish_destination).getVisibility());
+    }
+
+    private void settings(long duration) {
+        try {
+            Method method = MainActivity.class.getDeclaredMethod("applySettings", long.class, boolean.class, boolean.class);
+            method.setAccessible(true);
+            method.invoke(activity, duration, false, false);
+        } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
+    public void unlimitedLandscapeHasFixedRollButtonsAndAllFourWaitingPieces() throws Exception {
+        settings(0L);
+        settle();
+        assertInfoVisible();
+        Rect screen = bounds(activity.findViewById(R.id.root_layout));
+        for (int id : new int[]{R.id.btn_do, R.id.btn_gae, R.id.btn_geol, R.id.btn_yut, R.id.btn_mo, R.id.btn_bdo}) {
+            View button = activity.findViewById(id);
+            assertTrue(screen.contains(bounds(button)));
+            assertTrue(button.getHeight() >= 48);
+            assertTrue(bounds(button).left >= bounds(activity.findViewById(R.id.board_container)).right);
+        }
+        View[][] spots = (View[][]) field(activity, "waitSpots");
+        assertTrue(bounds(activity.findViewById(R.id.waiting_area)).contains(bounds(spots[0][3])));
+        screenshot("unlimited-landscape");
+        activity.findViewById(R.id.btn_do).performClick();
+        call("selectPiece", 0, 0);
+        settle();
+        call("commitSelectedMove");
+        settle();
+        assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
+        PieceStackView[][] views = (PieceStackView[][]) field(activity, "pieceViews");
+        assertEquals(36, field(views[0][0], "visualDiameterPx"));
+        settings(180000L);
+        settle();
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.control_panel).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
+    }
+
+    private void advanceFrames(int millis) {
+        for (int elapsed = 0; elapsed < millis; elapsed += 16) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16));
+        }
+    }
+
     private void showProgressExample() {
         int[] counts = {2, 1, 0, 3};
         for (int team = 0; team < 4; team++) for (int piece = 0; piece < counts[team]; piece++) {
@@ -203,7 +342,9 @@ public class BoardUxTest {
     private void screenshot(String name) throws Exception {
         View root = activity.findViewById(R.id.root_layout);
         Bitmap image = Bitmap.createBitmap(root.getWidth(), root.getHeight(), Bitmap.Config.ARGB_8888);
-        root.draw(new Canvas(image));
+        Canvas canvas = new Canvas(image);
+        canvas.drawColor(activity.getResources().getColor(R.color.bg_main));
+        root.draw(canvas);
         File folder = new File("build/reports/ux");
         folder.mkdirs();
         try (FileOutputStream output = new FileOutputStream(new File(folder, name + ".png"))) {

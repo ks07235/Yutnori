@@ -434,7 +434,7 @@ public class ExampleInstrumentedTest {
             SystemClock.sleep(400L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, false);
+                assertPanelState(activity, true);
                 assertDestinationOnRenderedBoard(activity, 16);
                 if (activity.findViewById(R.id.control_panel).getVisibility() == View.VISIBLE)
                     activity.findViewById(R.id.btn_toggle_controls).performClick();
@@ -912,21 +912,21 @@ public class ExampleInstrumentedTest {
             SystemClock.sleep(350L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, false);
+                assertPanelState(activity, true);
                 assertDestinationCentered(activity, 16);
                 activity.findViewById(R.id.btn_toggle_controls).performClick();
             });
             SystemClock.sleep(350L);
 
             scenario.onActivity(activity -> {
-                assertPanelState(activity, true);
+                assertPanelState(activity, false);
                 View destination = findDestinationPreview(activity);
                 assertNotNull(destination);
                 destination.performClick();
             });
             SystemClock.sleep(1_100L);
 
-            scenario.onActivity(activity -> assertPanelState(activity, true));
+            scenario.onActivity(activity -> assertPanelState(activity, false));
         }
     }
     @Test

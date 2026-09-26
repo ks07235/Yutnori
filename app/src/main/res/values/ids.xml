@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <item name="unlimited_rolls" type="id" />
+    <item name="unlimited_footer" type="id" />
     <item name="finish_destination" type="id" />
 </resources>
