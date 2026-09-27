@@ -192,17 +192,17 @@ public class BoardUxTest {
         assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
     }
 
-    @Test public void unlimitedModeRemovesTimerRowAndRestoresItForTimedPlay() throws Exception {
+    @Test public void portraitKeepsRegularControlsForBothTimeModes() throws Exception {
         settings(0L);
         settle();
-        assertEquals(View.GONE, activity.findViewById(R.id.text_timer).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.text_timer).getVisibility());
+        assertEquals(activity.getString(R.string.unlimited), ((android.widget.TextView) activity.findViewById(R.id.text_timer)).getText());
         assertEquals(View.GONE, activity.findViewById(R.id.btn_time_stop).getVisibility());
-        assertEquals(View.GONE, activity.findViewById(R.id.turn_tools).getVisibility());
-        assertSame(activity.findViewById(R.id.results_row), activity.findViewById(R.id.btn_end_turn).getParent());
-        assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
-        assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
-        assertEquals(View.VISIBLE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
-        assertTrue(bounds(activity.findViewById(R.id.btn_do)).left >= bounds(activity.findViewById(R.id.board_container)).right);
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.turn_tools).getVisibility());
+        assertSame(activity.findViewById(R.id.turn_tools), activity.findViewById(R.id.btn_end_turn).getParent());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.control_panel).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
         screenshot("unlimited-controls");
         activity.findViewById(R.id.btn_end_turn).performClick();
         settle();
@@ -310,14 +310,159 @@ public class BoardUxTest {
         assertEquals(36, field(views[0][0], "visualDiameterPx"));
         settings(180000L);
         settle();
-        assertEquals(View.VISIBLE, activity.findViewById(R.id.control_panel).getVisibility());
-        assertEquals(View.GONE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.turn_tools).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.btn_time_stop).getVisibility());
+        int[] columns = {R.id.top_panel, R.id.board_container, R.id.landscape_results,
+                R.id.unlimited_waiting, R.id.unlimited_rolls};
+        for (int i = 1; i < columns.length; i++) {
+            assertTrue(bounds(activity.findViewById(columns[i - 1])).right <= bounds(activity.findViewById(columns[i])).left);
+        }
+        screenshot("timed-landscape");
     }
 
     private void advanceFrames(int millis) {
         for (int elapsed = 0; elapsed < millis; elapsed += 16) {
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16));
         }
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
+    public void landscapeResultsScrollWithoutCoveringWaitingPiecesOrRollButtons() throws Exception {
+        for (int i = 0; i < 12; i++) call("handleYutInput", i % 2 == 0 ? 4 : 5);
+        settle();
+        android.widget.LinearLayout results = activity.findViewById(R.id.layout_results);
+        android.widget.ScrollView scroll = (android.widget.ScrollView) results.getParent();
+        assertEquals(12, results.getChildCount());
+        assertEquals(android.widget.LinearLayout.VERTICAL, results.getOrientation());
+        assertTrue(scroll.canScrollVertically(1));
+        assertTrue(bounds(scroll).right <= bounds(activity.findViewById(R.id.unlimited_waiting)).left);
+        scroll.setSmoothScrollingEnabled(false);
+        scroll.fullScroll(View.FOCUS_DOWN);
+        settle();
+        assertTrue(scroll.getScrollY() > 0);
+        assertTrue(bounds(scroll).contains(bounds(results.getChildAt(11))));
+        results.getChildAt(11).performClick();
+        settle();
+        assertTrue(game().getMoveChoices().get(11).selectionOrder > 0);
+        screenshot("landscape-results-scrolled");
+    }
+
+    @Test public void rotatingBothTimeModesPreservesResultsAndRestoresPortraitControls() {
+        for (long duration : new long[]{0L, 180000L}) {
+            settings(duration);
+            call("handleYutInput", 4);
+            call("handleYutInput", 5);
+            call("onResultClick", game().getMoveChoices().size() - 1);
+            int count = game().getPendingResults().size();
+            String selection = game().getSelectedSteps().toString();
+            rotate("ko-rKR-w640dp-h360dp-land-mdpi");
+            assertEquals(count, game().getPendingResults().size());
+            assertEquals(selection, game().getSelectedSteps().toString());
+            assertEquals(View.VISIBLE, activity.findViewById(R.id.landscape_results).getVisibility());
+            assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
+            assertSame(activity.findViewById(R.id.results_row), activity.findViewById(R.id.btn_end_turn).getParent());
+            rotate("ko-rKR-w360dp-h740dp-port-mdpi");
+            assertEquals(count, game().getPendingResults().size());
+            assertEquals(selection, game().getSelectedSteps().toString());
+            assertEquals(View.GONE, activity.findViewById(R.id.landscape_results).getVisibility());
+            assertEquals(View.VISIBLE, activity.findViewById(R.id.control_panel).getVisibility());
+            assertSame(activity.findViewById(R.id.turn_tools), activity.findViewById(R.id.btn_end_turn).getParent());
+            assertEquals(android.widget.LinearLayout.HORIZONTAL,
+                    ((android.widget.LinearLayout) activity.findViewById(R.id.layout_results)).getOrientation());
+        }
+    }
+
+    private void rotate(String qualifiers) {
+        RuntimeEnvironment.setQualifiers(qualifiers);
+        controller.configurationChange(new android.content.res.Configuration(
+                RuntimeEnvironment.getApplication().getResources().getConfiguration()));
+        activity = controller.get();
+        settle();
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-sw600dp-w960dp-h600dp-land-mdpi")
+    public void tabletLandscapeShowsAllFiveColumnsAndWaitingPieces() throws Exception {
+        assertInfoVisible();
+        int[] columns = {R.id.top_panel, R.id.board_container, R.id.landscape_results,
+                R.id.unlimited_waiting, R.id.unlimited_rolls};
+        Rect screen = bounds(activity.findViewById(R.id.root_layout));
+        for (int i = 0; i < columns.length; i++) {
+            Rect column = bounds(activity.findViewById(columns[i]));
+            assertTrue(screen.contains(column));
+            if (i > 0) assertTrue(bounds(activity.findViewById(columns[i - 1])).right <= column.left);
+        }
+        View[][] spots = (View[][]) field(activity, "waitSpots");
+        assertTrue(bounds(activity.findViewById(R.id.waiting_area)).contains(bounds(spots[0][3])));
+        call("handleYutInput", 4);
+        call("handleYutInput", 2);
+        settle();
+        screenshot("tablet-landscape");
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-w360dp-h740dp-port-night-mdpi")
+    public void settingsRemainLightInSystemDarkMode() throws Exception {
+        call("showSettingsDialog");
+        shadowOf(Looper.getMainLooper()).idle();
+        AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertTrue(dialog.isShowing());
+        android.util.TypedValue color = new android.util.TypedValue();
+        assertTrue(dialog.getContext().getTheme().resolveAttribute(android.R.attr.colorBackground, color, true));
+        assertTrue(androidx.core.graphics.ColorUtils.calculateLuminance(color.data) > 0.8);
+        assertTrue(androidx.core.graphics.ColorUtils.calculateLuminance(
+                activity.getResources().getColor(R.color.text_primary)) < 0.2);
+        View decor = dialog.getWindow().getDecorView();
+        decor.measure(View.MeasureSpec.makeMeasureSpec(340, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(700, View.MeasureSpec.AT_MOST));
+        decor.layout(0, 0, decor.getMeasuredWidth(), decor.getMeasuredHeight());
+        screenshot("settings-system-dark", decor);
+        dialog.dismiss();
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-sw600dp-w600dp-h960dp-port-mdpi")
+    public void tabletPortraitKeepsRegularControlsAndHorizontalResults() throws Exception {
+        settings(0L);
+        call("handleYutInput", 4);
+        call("handleYutInput", 1);
+        settle();
+        assertInfoVisible();
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.control_panel).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
+        assertEquals(android.widget.LinearLayout.HORIZONTAL,
+                ((android.widget.LinearLayout) activity.findViewById(R.id.layout_results)).getOrientation());
+        screenshot("tablet-portrait");
+    }
+
+    @Test public void newGameRequiresThreeSecondsAndExplicitConfirmation() {
+        int[] confirmed = {0};
+        int[] dismissed = {0};
+        YutDialogs.showNewGameConfirmation(activity, () -> confirmed[0]++, () -> dismissed[0]++);
+        shadowOf(Looper.getMainLooper()).idle();
+        AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        android.widget.Button button = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        assertFalse(button.isEnabled());
+        assertEquals(activity.getString(R.string.new_game_confirm_countdown, 3L), button.getText().toString());
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2));
+        assertFalse(button.isEnabled());
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1));
+        assertTrue(button.isEnabled());
+        assertEquals(0, confirmed[0]);
+        button.performClick();
+        shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(1, confirmed[0]);
+        assertEquals(1, dismissed[0]);
+    }
+
+    @Test public void dismissingNewGameDuringCountdownDoesNotStartGame() {
+        int[] confirmed = {0};
+        YutDialogs.showNewGameConfirmation(activity, () -> confirmed[0]++, () -> {});
+        shadowOf(Looper.getMainLooper()).idle();
+        AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(4));
+        assertEquals(0, confirmed[0]);
+        assertFalse(dialog.isShowing());
     }
 
     @Test public void repeatedUndoCrossesRollMoveAndTurnBoundariesAndSurvivesRecreation() {
@@ -419,7 +564,10 @@ public class BoardUxTest {
     }
 
     private void screenshot(String name) throws Exception {
-        View root = activity.findViewById(R.id.root_layout);
+        screenshot(name, activity.findViewById(R.id.root_layout));
+    }
+
+    private void screenshot(String name, View root) throws Exception {
         Bitmap image = Bitmap.createBitmap(root.getWidth(), root.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(image);
         canvas.drawColor(activity.getResources().getColor(R.color.bg_main));

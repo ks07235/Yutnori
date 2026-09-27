@@ -234,7 +234,7 @@ final class YutDialogs {
                 dialog.dismiss();
             });
 
-            countdown[0] = new CountDownTimer(5_000L, 1_000L) {
+            countdown[0] = new CountDownTimer(3_000L, 1_000L) {
                 @Override
                 public void onTick(long millisUntilFinished) {
                     long seconds = Math.max(1L, (millisUntilFinished + 999L) / 1_000L);

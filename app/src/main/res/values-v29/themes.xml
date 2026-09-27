@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.YutnoriApp" parent="Base.Theme.YutnoriApp">
+        <!-- Force Dark exists only on Android 10 and newer. -->
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>

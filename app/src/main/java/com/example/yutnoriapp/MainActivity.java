@@ -72,11 +72,8 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout unlimitedRolls;
     private LinearLayout unlimitedFooter;
     private LinearLayout unlimitedWaiting;
-    private LinearLayout.LayoutParams horizontalWaitingParams;
-    private LinearLayout.LayoutParams horizontalLogParams;
+    private LinearLayout landscapeResults;
     private boolean unlimitedControlsAttached;
-    private final java.util.Map<View, ViewGroup> regularControlParents = new java.util.LinkedHashMap<>();
-    private final java.util.Map<View, ViewGroup.LayoutParams> regularControlParams = new java.util.LinkedHashMap<>();
     private FrameLayout boardContainer;
     private BoardOverlayLayout boardOverlay;
     private View boardArt;
@@ -557,6 +554,7 @@ public class MainActivity extends AppCompatActivity {
         unlimitedRolls.setVisibility(View.GONE);
         unlimitedFooter.setVisibility(View.GONE);
         unlimitedWaiting.setVisibility(View.GONE);
+        landscapeResults.setVisibility(View.GONE);
         setEdgePanelTabsVisible(false);
         setupPanel.setVisibility(View.VISIBLE);
         setupPanel.setElevation(dp(24));
@@ -776,7 +774,8 @@ public class MainActivity extends AppCompatActivity {
         label.setMaxLines(1);
         label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(label, 9, 12, 1, TypedValue.COMPLEX_UNIT_SP);
-        summary.addView(label, new LinearLayout.LayoutParams(dp(38), LinearLayout.LayoutParams.MATCH_PARENT));
+        summary.addView(label, new LinearLayout.LayoutParams(
+                dp(usesLandscapeControls() && usesCompactWaitingTray() ? 28 : 38), LinearLayout.LayoutParams.MATCH_PARENT));
         for (int piece = 0; piece < YutGameEngine.PIECE_COUNT; piece++) {
             PieceStackView icon = new PieceStackView(this);
             icon.configureAppearance(teamColors[team], teamShapes[team], piece + 1);
@@ -1089,8 +1088,16 @@ public class MainActivity extends AppCompatActivity {
             button.setStateListAnimator(null);
             button.setSelected(choice.selectionOrder > 0);
             button.setEnabled(!isAnimatingMove);
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(moveChoices.size() > 1 ? 86 : 72), dp(44));
-            params.setMargins(0, 0, dp(6), 0);
+            boolean vertical = usesLandscapeControls();
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                    vertical ? ViewGroup.LayoutParams.MATCH_PARENT : dp(moveChoices.size() > 1 ? 86 : 72), dp(vertical ? 48 : 44));
+            params.setMargins(0, 0, vertical ? 0 : dp(6), vertical ? dp(4) : 0);
+            if (vertical) {
+                button.setMinWidth(0);
+                button.setPadding(dp(2), 0, dp(2), 0);
+                button.setMaxLines(2);
+                TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(button, 10, 14, 1, TypedValue.COMPLEX_UNIT_SP);
+            }
             button.setLayoutParams(params);
 
             final int index = i;
@@ -2302,7 +2309,7 @@ public class MainActivity extends AppCompatActivity {
         }
         int visibility = visible ? View.VISIBLE : View.GONE;
         btnToggleInfo.setVisibility(View.GONE);
-        btnToggleControls.setVisibility(turnDurationMillis <= 0L ? View.GONE : visibility);
+        btnToggleControls.setVisibility(usesLandscapeControls() ? View.GONE : visibility);
     }
 
     private void applyEdgePanelState(boolean animate) {
@@ -2334,9 +2341,9 @@ public class MainActivity extends AppCompatActivity {
         btnToggleControls.setTranslationY(0f);
 
         topPanel.setVisibility(View.VISIBLE);
-        controlPanel.setVisibility(turnDurationMillis > 0L && controlsPanelOpen ? View.VISIBLE : View.GONE);
+        controlPanel.setVisibility(!usesLandscapeControls() && controlsPanelOpen ? View.VISIBLE : View.GONE);
         btnToggleInfo.setVisibility(View.GONE);
-        btnToggleControls.setVisibility(turnDurationMillis > 0L ? View.VISIBLE : View.GONE);
+        btnToggleControls.setVisibility(usesLandscapeControls() ? View.GONE : View.VISIBLE);
         applyBoardPanelConstraints(root);
         updateDrawerTabLabel(
                 (TextView) btnToggleControls,
@@ -2361,7 +2368,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void applyBoardPanelConstraints(ViewGroup root) {
         if (!(root instanceof ConstraintLayout)) return;
-        if (turnDurationMillis <= 0L) {
+        if (usesLandscapeControls()) {
             applyUnlimitedBoardConstraints((ConstraintLayout) root);
             return;
         }
@@ -2456,9 +2463,13 @@ public class MainActivity extends AppCompatActivity {
                 && configuration.screenWidthDp < 600;
     }
     private void applyResponsiveSizing() {
+        if (usesLandscapeControls() && !usesCompactWaitingTray()) {
+            setViewWidthIfPresent(R.id.top_panel, 200);
+        }
         if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE
                 && usesCompactWaitingTray()) {
-            setViewWidthIfPresent(R.id.top_panel, 156);
+            setViewWidthIfPresent(R.id.top_panel, 128);
+            topPanel.setPadding(dp(6), dp(8), dp(6), dp(8));
             setViewWidthIfPresent(R.id.control_panel, 292);
             ((TextView) findViewById(R.id.text_title)).setTextSize(14);
             textStatus.setMaxLines(3);
@@ -2840,7 +2851,7 @@ public class MainActivity extends AppCompatActivity {
                 label,
                 9, 11, 1,
                 TypedValue.COMPLEX_UNIT_SP);
-        if (usesCompactWaitingTray()
+        if (usesLandscapeControls() || usesCompactWaitingTray()
                 || getResources().getConfiguration().fontScale >= 1.4f) {
             label.setVisibility(View.GONE);
             actionLogRail.setGravity(Gravity.CENTER);
@@ -3386,6 +3397,9 @@ public class MainActivity extends AppCompatActivity {
 
         updateTimerLayout();
         if (turnDurationMillis <= 0L) {
+            textTimer.setText(R.string.unlimited);
+            textTimer.setTextColor(getResources().getColor(R.color.text_primary));
+            textTimer.setContentDescription(getString(R.string.no_time_limit));
             btnTimeStop.setEnabled(false);
             return;
         }
@@ -3424,72 +3438,90 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // Layout is selected by orientation; the timer setting only changes game rules.
+    private boolean usesLandscapeControls() {
+        return getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+    }
+
     private void createUnlimitedControls() {
         unlimitedControlsAttached = false;
-        regularControlParents.clear();
-        regularControlParams.clear();
-        horizontalWaitingParams = new LinearLayout.LayoutParams((LinearLayout.LayoutParams) waitingArea.getLayoutParams());
-        horizontalLogParams = new LinearLayout.LayoutParams((LinearLayout.LayoutParams) actionLogRail.getLayoutParams());
-        int[] ids = {R.id.waiting_overview, R.id.results_row, R.id.btn_bdo, R.id.btn_do,
-                R.id.btn_gae, R.id.btn_geol, R.id.btn_yut, R.id.btn_mo};
-        for (int id : ids) {
-            View view = findViewById(id);
-            regularControlParents.put(view, (ViewGroup) view.getParent());
-            regularControlParams.put(view, view.getLayoutParams());
-        }
         ConstraintLayout root = findViewById(R.id.root_layout);
-        unlimitedRolls = new LinearLayout(this);
-        unlimitedRolls.setId(R.id.unlimited_rolls);
-        unlimitedRolls.setOrientation(LinearLayout.VERTICAL);
-        unlimitedRolls.setVisibility(View.GONE);
-        root.addView(unlimitedRolls, new ConstraintLayout.LayoutParams(dp(96), 0));
-        unlimitedFooter = new LinearLayout(this);
-        unlimitedFooter.setId(R.id.unlimited_footer);
-        unlimitedFooter.setOrientation(LinearLayout.VERTICAL);
-        unlimitedFooter.setVisibility(View.GONE);
-        root.addView(unlimitedFooter, new ConstraintLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT));
-        unlimitedWaiting = new LinearLayout(this);
-        unlimitedWaiting.setId(R.id.unlimited_waiting);
-        unlimitedWaiting.setOrientation(LinearLayout.VERTICAL);
-        unlimitedWaiting.setVisibility(View.GONE);
-        root.addView(unlimitedWaiting, new ConstraintLayout.LayoutParams(dp(52), 0));
+        unlimitedRolls = createLandscapeColumn(root, R.id.unlimited_rolls, 128);
+        unlimitedFooter = createLandscapeColumn(root, R.id.unlimited_footer, 0);
+        unlimitedFooter.setLayoutParams(new ConstraintLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT));
+        unlimitedWaiting = createLandscapeColumn(root, R.id.unlimited_waiting, 48);
+        landscapeResults = createLandscapeColumn(root, R.id.landscape_results, 60);
+    }
+
+    private LinearLayout createLandscapeColumn(ConstraintLayout root, int id, int widthDp) {
+        LinearLayout column = new LinearLayout(this);
+        column.setId(id);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setVisibility(View.GONE);
+        root.addView(column, new ConstraintLayout.LayoutParams(dp(widthDp), 0));
+        return column;
+    }
+
+    private void addColumnTitle(LinearLayout column, int text) {
+        TextView title = new TextView(this);
+        title.setText(text);
+        title.setTextColor(getResources().getColor(R.color.text_primary));
+        title.setTextSize(12);
+        title.setGravity(Gravity.CENTER);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        column.addView(title, new LinearLayout.LayoutParams(-1, dp(24)));
     }
 
     private boolean usesVerticalWaitingTray() {
-        return turnDurationMillis <= 0L
-                && getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        return usesLandscapeControls();
     }
 
-    private void updateUnlimitedControls(boolean unlimited) {
-        if (unlimitedControlsAttached == unlimited) return;
-        unlimitedControlsAttached = unlimited;
-        if (unlimited) {
-            for (int id : new int[]{R.id.waiting_overview, R.id.results_row}) {
+    private void updateUnlimitedControls(boolean landscape) {
+        boolean attachedNow = landscape && !unlimitedControlsAttached;
+        if (attachedNow) {
+            // Configuration changes reinflate the regular XML before attaching these columns.
+            unlimitedControlsAttached = true;
+            LinearLayout overview = findViewById(R.id.waiting_overview);
+            removeFromParent(overview);
+            overview.setOrientation(LinearLayout.VERTICAL);
+            unlimitedWaiting.addView(overview, new LinearLayout.LayoutParams(-1, -1));
+            waitingArea.setLayoutParams(new LinearLayout.LayoutParams(-1, -1));
+
+            // Results get their own vertical scroll area. The old horizontal viewport stays
+            // in the footer, hidden, so portrait XML remains unchanged.
+            View horizontalResults = (View) resultLayout.getParent();
+            horizontalResults.setVisibility(View.GONE);
+            removeFromParent(resultLayout);
+            resultLayout.setOrientation(LinearLayout.VERTICAL);
+            resultLayout.setGravity(Gravity.TOP);
+            addColumnTitle(landscapeResults, R.string.pending_results_title);
+            android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+            scroll.setFillViewport(true);
+            scroll.setClipToPadding(false);
+            scroll.setPadding(dp(2), 0, dp(2), 0);
+            scroll.addView(resultLayout, new FrameLayout.LayoutParams(-1, -2));
+            landscapeResults.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+            for (int id : new int[]{R.id.turn_tools, R.id.results_row}) {
                 View row = findViewById(id);
                 removeFromParent(row);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(48));
                 params.topMargin = dp(4);
-                if (id == R.id.waiting_overview && usesVerticalWaitingTray()) {
-                    params.height = LinearLayout.LayoutParams.MATCH_PARENT;
-                    unlimitedWaiting.addView(row, params);
-                } else {
-                    unlimitedFooter.addView(row, params);
-                }
+                unlimitedFooter.addView(row, params);
             }
-            TextView title = new TextView(this);
-            title.setText(R.string.roll_controls);
-            title.setTextColor(getResources().getColor(R.color.text_primary));
-            title.setTextSize(12);
-            title.setGravity(Gravity.CENTER);
-            title.setTypeface(Typeface.DEFAULT_BOLD);
-            unlimitedRolls.addView(title, new LinearLayout.LayoutParams(-1, dp(24)));
-            boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-            int columns = landscape ? 2 : 1;
+            LinearLayout actions = findViewById(R.id.results_row);
+            removeFromParent(actionLogRail);
+            actions.addView(actionLogRail, new LinearLayout.LayoutParams(dp(44), dp(44)));
+            View undo = findViewById(R.id.btn_undo_roll);
+            LinearLayout.LayoutParams undoParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
+            undoParams.setMargins(dp(2), 0, dp(2), 0);
+            undo.setLayoutParams(undoParams);
+
+            addColumnTitle(unlimitedRolls, R.string.roll_controls);
             int[] buttons = {R.id.btn_do, R.id.btn_gae, R.id.btn_geol, R.id.btn_yut, R.id.btn_mo, R.id.btn_bdo};
             LinearLayout row = null;
             for (int i = 0; i < buttons.length; i++) {
-                if (i % columns == 0) {
+                if (i % 2 == 0) {
                     row = new LinearLayout(this);
                     unlimitedRolls.addView(row, new LinearLayout.LayoutParams(-1, 0, 1f));
                 }
@@ -3499,68 +3531,57 @@ public class MainActivity extends AppCompatActivity {
                 params.setMargins(dp(2), dp(2), dp(2), dp(2));
                 row.addView(button, params);
             }
-        } else {
-            for (View view : regularControlParents.keySet()) {
-                removeFromParent(view);
-                ViewGroup parent = regularControlParents.get(view);
-                // The waiting and results rows surround the time row in the regular panel.
-                int index = view.getId() == R.id.waiting_overview ? 0
-                        : view.getId() == R.id.results_row ? 2 : parent.getChildCount();
-                parent.addView(view, index, regularControlParams.get(view));
-            }
-            unlimitedRolls.removeAllViews();
+            updateResultButtons();
+            if (gameStarted) rebuildCurrentWaitingArea();
         }
-        unlimitedRolls.setVisibility(unlimited && gameStarted ? View.VISIBLE : View.GONE);
-        unlimitedFooter.setVisibility(unlimited && gameStarted ? View.VISIBLE : View.GONE);
-        unlimitedWaiting.setVisibility(usesVerticalWaitingTray() && gameStarted ? View.VISIBLE : View.GONE);
-        LinearLayout overview = findViewById(R.id.waiting_overview);
-        overview.setOrientation(usesVerticalWaitingTray() ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-        waitingArea.setLayoutParams(usesVerticalWaitingTray()
-                ? new LinearLayout.LayoutParams(-1, 0, 1f) : new LinearLayout.LayoutParams(horizontalWaitingParams));
-        actionLogRail.setLayoutParams(usesVerticalWaitingTray()
-                ? new LinearLayout.LayoutParams(-1, dp(48)) : new LinearLayout.LayoutParams(horizontalLogParams));
+        int visible = landscape && gameStarted ? View.VISIBLE : View.GONE;
+        unlimitedRolls.setVisibility(visible);
+        unlimitedFooter.setVisibility(visible);
+        unlimitedWaiting.setVisibility(visible);
+        landscapeResults.setVisibility(visible);
         if (gameStarted) {
-            rebuildCurrentWaitingArea();
-            controlPanel.setVisibility(!unlimited && controlsPanelOpen ? View.VISIBLE : View.GONE);
-            btnToggleControls.setVisibility(unlimited ? View.GONE : View.VISIBLE);
-            applyBoardPanelConstraints(findViewById(R.id.root_layout));
-            scheduleBoardLayoutRefresh();
+            controlPanel.setVisibility(!landscape && controlsPanelOpen ? View.VISIBLE : View.GONE);
+            btnToggleControls.setVisibility(landscape ? View.GONE : View.VISIBLE);
+            if (attachedNow) scheduleBoardLayoutRefresh();
         }
     }
 
     private void applyUnlimitedBoardConstraints(ConstraintLayout root) {
         ConstraintSet constraints = new ConstraintSet();
         constraints.clone(root);
-        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-        for (int id : new int[]{R.id.board_container, R.id.finish_destination, R.id.unlimited_rolls, R.id.unlimited_footer, R.id.unlimited_waiting}) {
+        for (int id : new int[]{R.id.board_container, R.id.finish_destination, R.id.unlimited_rolls,
+                R.id.unlimited_footer, R.id.unlimited_waiting, R.id.landscape_results}) {
             clearPanelTabConstraints(constraints, id);
         }
         constraints.setVisibility(R.id.control_panel, View.GONE);
         constraints.setVisibility(R.id.btn_toggle_controls, View.GONE);
         constraints.setVisibility(R.id.btn_toggle_info, View.GONE);
         constraints.setVisibility(R.id.top_panel, View.VISIBLE);
-        constraints.setVisibility(R.id.unlimited_rolls, View.VISIBLE);
-        constraints.setVisibility(R.id.unlimited_footer, View.VISIBLE);
-        constraints.setVisibility(R.id.unlimited_waiting, landscape ? View.VISIBLE : View.GONE);
-        int top = landscape ? ConstraintSet.PARENT_ID : R.id.top_panel;
-        int topSide = landscape ? ConstraintSet.TOP : ConstraintSet.BOTTOM;
-        int left = landscape ? R.id.top_panel : ConstraintSet.PARENT_ID;
-        int leftSide = landscape ? ConstraintSet.END : ConstraintSet.START;
-        constraints.constrainWidth(R.id.unlimited_rolls, dp(landscape ? 152 : 96));
+        for (int id : new int[]{R.id.unlimited_rolls, R.id.unlimited_footer,
+                R.id.unlimited_waiting, R.id.landscape_results}) {
+            constraints.setVisibility(id, View.VISIBLE);
+        }
+        boolean compact = usesCompactWaitingTray();
+        constraints.constrainWidth(R.id.unlimited_rolls, dp(compact ? 128 : 168));
+        constraints.constrainWidth(R.id.unlimited_waiting, dp(compact ? 48 : 60));
+        constraints.constrainWidth(R.id.landscape_results, dp(compact ? 60 : 76));
         constraints.connect(R.id.unlimited_rolls, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
-        constraints.connect(R.id.unlimited_rolls, ConstraintSet.TOP, top, topSide, dp(4));
-        constraints.connect(R.id.unlimited_rolls, ConstraintSet.BOTTOM, R.id.unlimited_footer, ConstraintSet.TOP, dp(4));
-        constraints.connect(R.id.unlimited_footer, ConstraintSet.START, left, leftSide, dp(4));
+        constraints.connect(R.id.unlimited_waiting, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.START, dp(4));
+        constraints.connect(R.id.landscape_results, ConstraintSet.END, R.id.unlimited_waiting, ConstraintSet.START, dp(4));
+        for (int id : new int[]{R.id.unlimited_rolls, R.id.unlimited_waiting, R.id.landscape_results}) {
+            constraints.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);
+            constraints.connect(id, ConstraintSet.BOTTOM, R.id.unlimited_footer, ConstraintSet.TOP, dp(4));
+        }
+        constraints.connect(R.id.unlimited_footer, ConstraintSet.START, R.id.landscape_results, ConstraintSet.START);
         constraints.connect(R.id.unlimited_footer, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
         constraints.connect(R.id.unlimited_footer, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
-        constraints.connect(R.id.board_container, ConstraintSet.START, left, leftSide, dp(4));
-        constraints.connect(R.id.unlimited_waiting, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.START, dp(4));
-        constraints.connect(R.id.unlimited_waiting, ConstraintSet.TOP, top, topSide, dp(4));
-        constraints.connect(R.id.unlimited_waiting, ConstraintSet.BOTTOM, R.id.unlimited_footer, ConstraintSet.TOP, dp(4));
-        constraints.connect(R.id.board_container, ConstraintSet.END,
-                landscape ? R.id.unlimited_waiting : R.id.unlimited_rolls, ConstraintSet.START, dp(4));
-        constraints.createVerticalChain(top, topSide, R.id.unlimited_footer, ConstraintSet.TOP,
-                new int[]{R.id.board_container, R.id.finish_destination}, null, ConstraintSet.CHAIN_PACKED);
+
+        // The footer only occupies the controls' width, leaving the board the full screen height.
+        constraints.connect(R.id.board_container, ConstraintSet.START, R.id.top_panel, ConstraintSet.END, dp(4));
+        constraints.connect(R.id.board_container, ConstraintSet.END, R.id.landscape_results, ConstraintSet.START, dp(4));
+        constraints.createVerticalChain(ConstraintSet.PARENT_ID, ConstraintSet.TOP, ConstraintSet.PARENT_ID,
+                ConstraintSet.BOTTOM, new int[]{R.id.board_container, R.id.finish_destination},
+                null, ConstraintSet.CHAIN_PACKED);
         constraints.connect(R.id.finish_destination, ConstraintSet.END, R.id.board_container, ConstraintSet.END);
         constraints.setMargin(R.id.finish_destination, ConstraintSet.TOP, dp(4));
         constraints.setGoneMargin(R.id.board_container, ConstraintSet.BOTTOM, 0);
@@ -3569,20 +3590,22 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateTimerLayout() {
         boolean timed = turnDurationMillis > 0L;
+        boolean landscape = usesLandscapeControls();
         LinearLayout tools = findViewById(R.id.turn_tools);
         LinearLayout results = findViewById(R.id.results_row);
         View endTurn = findViewById(R.id.btn_end_turn);
-        LinearLayout destination = timed ? tools : results;
+        LinearLayout destination = landscape ? results : tools;
         if (endTurn.getParent() != destination) {
             removeFromParent(endTurn);
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(timedEndTurnParams);
-            if (!timed) params.height = ViewGroup.LayoutParams.MATCH_PARENT;
+            LinearLayout.LayoutParams params = landscape
+                    ? new LinearLayout.LayoutParams(0, dp(44), 1f)
+                    : new LinearLayout.LayoutParams(timedEndTurnParams);
             destination.addView(endTurn, params);
         }
-        tools.setVisibility(timed ? View.VISIBLE : View.GONE);
-        textTimer.setVisibility(timed ? View.VISIBLE : View.GONE);
+        tools.setVisibility(timed || !landscape ? View.VISIBLE : View.GONE);
+        textTimer.setVisibility(View.VISIBLE);
         btnTimeStop.setVisibility(timed ? View.VISIBLE : View.GONE);
-        updateUnlimitedControls(!timed);
+        updateUnlimitedControls(landscape);
     }
 
     private void updateKeepScreenOn() {

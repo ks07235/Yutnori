@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="pending_results_title">나온 윷</string>
     <string name="roll_controls">윷 진행버튼</string>
     <string name="app_name">윷놀이</string>
     <string name="settings">설정</string>
