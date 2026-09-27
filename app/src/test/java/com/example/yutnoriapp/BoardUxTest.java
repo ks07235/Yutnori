@@ -587,6 +587,51 @@ public class BoardUxTest {
         screenshot("v150-landscape");
     }
 
+    @Test @Config(qualifiers = "ko-rKR-w780dp-h360dp-land-mdpi")
+    public void landscapeUsesHeightWhileProtectingCutoutAndGestureControls() throws Exception {
+        View root = activity.findViewById(R.id.root_layout);
+        androidx.core.view.WindowInsetsCompat insets = new androidx.core.view.WindowInsetsCompat.Builder()
+                .setInsets(androidx.core.view.WindowInsetsCompat.Type.displayCutout(),
+                        androidx.core.graphics.Insets.of(28, 0, 0, 0))
+                .setInsets(androidx.core.view.WindowInsetsCompat.Type.mandatorySystemGestures(),
+                        androidx.core.graphics.Insets.of(0, 24, 0, 24)).build();
+        androidx.core.view.ViewCompat.dispatchApplyWindowInsets(root, insets);
+        settle();
+        assertEquals(34, root.getPaddingLeft());
+        assertEquals(8, root.getPaddingTop());
+        assertEquals(8, root.getPaddingBottom());
+        Rect surface = bounds(activity.findViewById(R.id.landscape_control_surface));
+        assertTrue(surface.contains(bounds(activity.findViewById(R.id.btn_do))));
+        assertTrue(surface.contains(bounds(activity.findViewById(R.id.btn_undo_roll))));
+        assertTrue(surface.contains(bounds(activity.findViewById(R.id.unlimited_waiting))));
+        assertTrue(bounds(activity.findViewById(R.id.btn_settings)).top >= 24);
+        assertTrue(bounds(activity.findViewById(R.id.btn_do)).top >= 24);
+        assertTrue(bounds(activity.findViewById(R.id.btn_undo_roll)).bottom <= 336);
+        assertTrue(activity.findViewById(R.id.board_container).getWidth() > 310);
+        screenshot("v151-landscape-insets");
+        // Insets are absolute, not accumulated when Android redispatches them.
+        int footerPadding = activity.findViewById(R.id.unlimited_footer).getPaddingBottom();
+        androidx.core.view.ViewCompat.dispatchApplyWindowInsets(root, insets); settle();
+        assertEquals(footerPadding, activity.findViewById(R.id.unlimited_footer).getPaddingBottom());
+        call("showTeamSetup"); settle();
+        assertEquals(View.GONE, activity.findViewById(R.id.landscape_control_surface).getVisibility());
+    }
+
+    @Test public void portraitSafeAreaRemainsUnchangedAfterLandscapeRotation() {
+        rotate("ko-rKR-w780dp-h360dp-land-mdpi");
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.landscape_control_surface).getVisibility());
+        rotate("ko-rKR-w360dp-h740dp-port-mdpi");
+        View root = activity.findViewById(R.id.root_layout);
+        androidx.core.view.WindowInsetsCompat insets = new androidx.core.view.WindowInsetsCompat.Builder()
+                .setInsets(androidx.core.view.WindowInsetsCompat.Type.mandatorySystemGestures(),
+                        androidx.core.graphics.Insets.of(0, 24, 0, 24)).build();
+        androidx.core.view.ViewCompat.dispatchApplyWindowInsets(root, insets); settle();
+        assertEquals(32, root.getPaddingTop());
+        assertEquals(32, root.getPaddingBottom());
+        assertEquals(View.GONE, activity.findViewById(R.id.landscape_control_surface).getVisibility());
+        assertInfoVisible();
+    }
+
     private void assertExtraThrowHint() {
         android.widget.TextView hint = (android.widget.TextView) field(activity, "rollHint");
         assertEquals(activity.getString(R.string.extra_rolls, 1), hint.getText().toString());

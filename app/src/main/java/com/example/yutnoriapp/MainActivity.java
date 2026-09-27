@@ -572,6 +572,7 @@ public class MainActivity extends AppCompatActivity {
         unlimitedFooter.setVisibility(View.GONE);
         unlimitedWaiting.setVisibility(View.GONE);
         landscapeResults.setVisibility(View.GONE);
+        findViewById(R.id.landscape_control_surface).setVisibility(View.GONE);
         setEdgePanelTabsVisible(false);
         setupPanel.setVisibility(View.VISIBLE);
         setupPanel.setElevation(dp(24));
@@ -2643,15 +2644,31 @@ public class MainActivity extends AppCompatActivity {
         int baseTop = root.getPaddingTop();
         int baseRight = root.getPaddingRight();
         int baseBottom = root.getPaddingBottom();
+        int panelTop = topPanel.getPaddingTop();
+        int panelBottom = topPanel.getPaddingBottom();
 
         ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
             Insets cutout = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout());
             Insets mandatoryGestures = windowInsets.getInsets(
                     WindowInsetsCompat.Type.mandatorySystemGestures());
             int safeLeft = Math.max(cutout.left, mandatoryGestures.left);
-            int safeTop = Math.max(cutout.top, mandatoryGestures.top);
+            boolean landscape = usesLandscapeControls();
+            // The board may use gesture space; interactive controls must remain outside it.
+            int gestureTop = landscape ? Math.min(mandatoryGestures.top, dp(4)) : mandatoryGestures.top;
+            int gestureBottom = landscape ? Math.min(mandatoryGestures.bottom, dp(4)) : mandatoryGestures.bottom;
+            int safeTop = Math.max(cutout.top, gestureTop);
             int safeRight = Math.max(cutout.right, mandatoryGestures.right);
-            int safeBottom = Math.max(cutout.bottom, mandatoryGestures.bottom);
+            int safeBottom = Math.max(cutout.bottom, gestureBottom);
+            if (landscape) {
+                int extraTop = Math.max(0, mandatoryGestures.top - safeTop - baseTop);
+                int extraBottom = Math.max(0, mandatoryGestures.bottom - safeBottom - baseBottom);
+                topPanel.setPadding(topPanel.getPaddingLeft(), panelTop + extraTop,
+                        topPanel.getPaddingRight(), panelBottom + extraBottom);
+                unlimitedFooter.setPadding(dp(4), 0, dp(4), dp(6) + extraBottom);
+                for (View column : new View[]{unlimitedRolls, unlimitedWaiting, landscapeResults}) {
+                    column.setPadding(column.getPaddingLeft(), extraTop, column.getPaddingRight(), 0);
+                }
+            }
             int left = baseLeft + safeLeft;
             int top = baseTop + safeTop;
             int right = baseRight + safeRight;
@@ -3711,9 +3728,16 @@ public class MainActivity extends AppCompatActivity {
     private void createUnlimitedControls() {
         unlimitedControlsAttached = false;
         ConstraintLayout root = findViewById(R.id.root_layout);
+        View surface = new View(this);
+        surface.setId(R.id.landscape_control_surface);
+        surface.setBackgroundResource(R.drawable.shape_panel);
+        surface.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        surface.setVisibility(View.GONE);
+        root.addView(surface, new ConstraintLayout.LayoutParams(0, 0));
         unlimitedRolls = createLandscapeColumn(root, R.id.unlimited_rolls, 128);
         unlimitedFooter = createLandscapeColumn(root, R.id.unlimited_footer, 0);
         unlimitedFooter.setLayoutParams(new ConstraintLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT));
+        unlimitedFooter.setPadding(dp(4), 0, dp(4), dp(6));
         unlimitedWaiting = createLandscapeColumn(root, R.id.unlimited_waiting, 48);
         landscapeResults = createLandscapeColumn(root, R.id.landscape_results, 60);
         rollHint = new TextView(this);
@@ -3823,6 +3847,7 @@ public class MainActivity extends AppCompatActivity {
         unlimitedFooter.setVisibility(visible);
         unlimitedWaiting.setVisibility(visible);
         landscapeResults.setVisibility(visible);
+        findViewById(R.id.landscape_control_surface).setVisibility(visible);
         if (gameStarted) {
             controlPanel.setVisibility(!landscape && controlsPanelOpen ? View.VISIBLE : View.GONE);
             btnToggleControls.setVisibility(landscape ? View.GONE : View.VISIBLE);
@@ -3834,7 +3859,8 @@ public class MainActivity extends AppCompatActivity {
         ConstraintSet constraints = new ConstraintSet();
         constraints.clone(root);
         for (int id : new int[]{R.id.board_container, R.id.finish_destination, R.id.unlimited_rolls,
-                R.id.unlimited_footer, R.id.unlimited_waiting, R.id.landscape_results}) {
+                R.id.unlimited_footer, R.id.unlimited_waiting, R.id.landscape_results,
+                R.id.landscape_control_surface}) {
             clearPanelTabConstraints(constraints, id);
         }
         constraints.setVisibility(R.id.control_panel, View.GONE);
@@ -3842,23 +3868,29 @@ public class MainActivity extends AppCompatActivity {
         constraints.setVisibility(R.id.btn_toggle_info, View.GONE);
         constraints.setVisibility(R.id.top_panel, View.VISIBLE);
         for (int id : new int[]{R.id.unlimited_rolls, R.id.unlimited_footer,
-                R.id.unlimited_waiting, R.id.landscape_results}) {
+                R.id.unlimited_waiting, R.id.landscape_results, R.id.landscape_control_surface}) {
             constraints.setVisibility(id, View.VISIBLE);
         }
         boolean compact = usesCompactWaitingTray();
-        constraints.constrainWidth(R.id.unlimited_rolls, dp(compact ? 116 : 152));
+        // Account for the frame's end inset without stealing width from the board.
+        constraints.constrainWidth(R.id.unlimited_rolls, dp(compact ? 110 : 146));
         constraints.constrainWidth(R.id.unlimited_waiting, dp(compact ? 48 : 60));
         constraints.constrainWidth(R.id.landscape_results, dp(compact ? 56 : 76));
-        constraints.connect(R.id.unlimited_rolls, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
+        constraints.connect(R.id.unlimited_rolls, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, dp(6));
         constraints.connect(R.id.unlimited_waiting, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.START, dp(4));
         constraints.connect(R.id.landscape_results, ConstraintSet.END, R.id.unlimited_waiting, ConstraintSet.START, dp(4));
         for (int id : new int[]{R.id.unlimited_rolls, R.id.unlimited_waiting, R.id.landscape_results}) {
-            constraints.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);
+            constraints.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, dp(6));
             constraints.connect(id, ConstraintSet.BOTTOM, R.id.unlimited_footer, ConstraintSet.TOP, dp(4));
         }
         constraints.connect(R.id.unlimited_footer, ConstraintSet.START, R.id.landscape_results, ConstraintSet.START);
-        constraints.connect(R.id.unlimited_footer, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
+        constraints.connect(R.id.unlimited_footer, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.END);
         constraints.connect(R.id.unlimited_footer, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
+        constraints.connect(R.id.landscape_control_surface, ConstraintSet.START, R.id.landscape_results, ConstraintSet.START);
+        constraints.setMargin(R.id.landscape_control_surface, ConstraintSet.START, -dp(4));
+        constraints.connect(R.id.landscape_control_surface, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
+        constraints.connect(R.id.landscape_control_surface, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);
+        constraints.connect(R.id.landscape_control_surface, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
 
         // The footer only occupies the controls' width, leaving the board the full screen height.
         constraints.connect(R.id.board_container, ConstraintSet.START, R.id.top_panel, ConstraintSet.END, dp(4));

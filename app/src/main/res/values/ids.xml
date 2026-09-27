@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <item name="landscape_control_surface" type="id" />
     <item name="landscape_results" type="id" />
     <item name="unlimited_waiting" type="id" />
     <item name="unlimited_rolls" type="id" />
