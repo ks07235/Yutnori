@@ -617,6 +617,59 @@ public class BoardUxTest {
         assertEquals(View.GONE, activity.findViewById(R.id.landscape_control_surface).getVisibility());
     }
 
+    @Test @Config(qualifiers = "ko-rKR-w780dp-h360dp-land-mdpi")
+    public void landscapeProtectsRightCutoutAndVisibleNavigationBar() {
+        View root = activity.findViewById(R.id.root_layout);
+        androidx.core.view.WindowInsetsCompat emptyInsets =
+                new androidx.core.view.WindowInsetsCompat.Builder().build();
+        androidx.core.view.ViewCompat.dispatchApplyWindowInsets(root, emptyInsets);
+        settle();
+        int baseRight = root.getPaddingRight();
+        int baseBottom = root.getPaddingBottom();
+        int footerBottom = activity.findViewById(R.id.unlimited_footer).getPaddingBottom();
+
+        androidx.core.view.WindowInsetsCompat protectedInsets =
+                new androidx.core.view.WindowInsetsCompat.Builder()
+                        .setInsets(androidx.core.view.WindowInsetsCompat.Type.displayCutout(),
+                                androidx.core.graphics.Insets.of(0, 0, 32, 0))
+                        .setInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars(),
+                                androidx.core.graphics.Insets.of(0, 0, 0, 28))
+                        .build();
+        androidx.core.view.ViewCompat.dispatchApplyWindowInsets(root, protectedInsets);
+        settle();
+
+        assertEquals(baseRight + 32, root.getPaddingRight());
+        assertEquals(baseBottom + 4, root.getPaddingBottom());
+        assertTrue(activity.findViewById(R.id.unlimited_footer).getPaddingBottom() > footerBottom);
+        assertTrue(bounds(activity.findViewById(R.id.btn_undo_roll)).bottom <= 360 - 28);
+        assertTrue(bounds(activity.findViewById(R.id.btn_end_turn)).bottom <= 360 - 28);
+    }
+
+    @Test
+    @Config(qualifiers = "en-rUS-w411dp-h914dp-port-mdpi", fontScale = 1.7f)
+    public void largeFontSetupKeepsEveryPrimaryChoiceUsable() throws Exception {
+        call("showTeamSetup");
+        settle();
+        int[] ids = {
+                R.id.btn_team_2,
+                R.id.btn_team_3,
+                R.id.btn_team_4,
+                R.id.btn_setup_help,
+                R.id.btn_setup_version
+        };
+        for (int id : ids) {
+            android.widget.TextView button = activity.findViewById(id);
+            assertEquals(View.VISIBLE, button.getVisibility());
+            assertTrue(button.isClickable());
+            assertTrue(button.getHeight() >= 48);
+            assertNotNull(button.getLayout());
+            for (int line = 0; line < button.getLayout().getLineCount(); line++) {
+                assertEquals(0, button.getLayout().getEllipsisCount(line));
+            }
+        }
+        screenshot("v153-large-font-setup");
+    }
+
     @Test public void portraitSafeAreaRemainsUnchangedAfterLandscapeRotation() {
         rotate("ko-rKR-w780dp-h360dp-land-mdpi");
         assertEquals(View.VISIBLE, activity.findViewById(R.id.landscape_control_surface).getVisibility());

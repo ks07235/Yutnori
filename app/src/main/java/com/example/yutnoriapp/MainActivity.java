@@ -2656,19 +2656,20 @@ public class MainActivity extends AppCompatActivity {
 
         ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
             Insets cutout = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout());
-            Insets mandatoryGestures = windowInsets.getInsets(
-                    WindowInsetsCompat.Type.mandatorySystemGestures());
-            int safeLeft = Math.max(cutout.left, mandatoryGestures.left);
+            Insets interactionInsets = windowInsets.getInsets(
+                    WindowInsetsCompat.Type.mandatorySystemGestures()
+                            | WindowInsetsCompat.Type.navigationBars());
+            int safeLeft = Math.max(cutout.left, interactionInsets.left);
             boolean landscape = usesLandscapeControls();
             // The board may use gesture space; interactive controls must remain outside it.
-            int gestureTop = landscape ? Math.min(mandatoryGestures.top, dp(4)) : mandatoryGestures.top;
-            int gestureBottom = landscape ? Math.min(mandatoryGestures.bottom, dp(4)) : mandatoryGestures.bottom;
+            int gestureTop = landscape ? Math.min(interactionInsets.top, dp(4)) : interactionInsets.top;
+            int gestureBottom = landscape ? Math.min(interactionInsets.bottom, dp(4)) : interactionInsets.bottom;
             int safeTop = Math.max(cutout.top, gestureTop);
-            int safeRight = Math.max(cutout.right, mandatoryGestures.right);
+            int safeRight = Math.max(cutout.right, interactionInsets.right);
             int safeBottom = Math.max(cutout.bottom, gestureBottom);
             if (landscape) {
-                int extraTop = Math.max(0, mandatoryGestures.top - safeTop - baseTop);
-                int extraBottom = Math.max(0, mandatoryGestures.bottom - safeBottom - baseBottom);
+                int extraTop = Math.max(0, interactionInsets.top - safeTop - baseTop);
+                int extraBottom = Math.max(0, interactionInsets.bottom - safeBottom - baseBottom);
                 topPanel.setPadding(topPanel.getPaddingLeft(), panelTop + extraTop,
                         topPanel.getPaddingRight(), panelBottom + extraBottom);
                 unlimitedFooter.setPadding(dp(4), 0, dp(4), dp(6) + extraBottom);
