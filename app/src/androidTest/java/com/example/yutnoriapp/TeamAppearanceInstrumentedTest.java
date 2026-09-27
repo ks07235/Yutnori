@@ -61,7 +61,7 @@ public class TeamAppearanceInstrumentedTest {
         }
     }
 
-    @Test public void duplicateColorIsRejectedAndRecommendedButtonResetsDraft() {
+    @Test public void duplicateColorIsRejectedAndRecommendedButtonRandomizesDistinctDraft() {
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(activity -> {
                 activity.findViewById(R.id.btn_team_4).performClick();
@@ -71,8 +71,10 @@ public class TeamAppearanceInstrumentedTest {
                 choose(activity, "appearance_shape_4");
                 dialog(activity).getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
                 assertTrue(dialog(activity).isShowing());
-                assertArrayEquals(TeamAppearance.recommendedColors(), (int[]) field(activity, "draftTeamColors"));
-                assertArrayEquals(TeamAppearance.recommendedShapes(), (int[]) field(activity, "draftTeamShapes"));
+                int[] colors = (int[]) field(activity, "draftTeamColors");
+                int[] shapes = (int[]) field(activity, "draftTeamShapes");
+                assertTrue(TeamAppearance.distinctColors(colors, 4));
+                for (int i = 0; i < 4; i++) for (int j = 0; j < i; j++) assertNotEquals(shapes[i], shapes[j]);
                 dialog(activity).getButton(AlertDialog.BUTTON_POSITIVE).performClick();
                 assertEquals(4, ((YutGameEngine) field(activity, "game")).getTeamCount());
             });

@@ -53,7 +53,7 @@ public class YutBoardView extends View {
         nodePaint.setColor(getResources().getColor(R.color.board_node));
 
         centerPaint.setStyle(Paint.Style.FILL);
-        centerPaint.setColor(getResources().getColor(R.color.board_center));
+        centerPaint.setColor(getResources().getColor(R.color.board_node));
 
         strokePaint.setStyle(Paint.Style.STROKE);
         strokePaint.setColor(getResources().getColor(R.color.board_node_stroke));
@@ -116,6 +116,9 @@ public class YutBoardView extends View {
             canvas.drawCircle(x(i, size), y(i, size), radius * 1.18f, softLinePaint);
             canvas.drawCircle(x(i, size), y(i, size), radius, fill);
             canvas.drawCircle(x(i, size), y(i, size), radius, strokePaint);
+            if (i == 22 || i == BoardGeometry.START_SPOT) {
+                canvas.drawCircle(x(i, size), y(i, size), radius * 0.76f, strokePaint);
+            }
         }
         drawStartLabel(canvas, size);
     }

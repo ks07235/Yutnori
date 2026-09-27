@@ -64,7 +64,101 @@ final class GameStateStore {
                 prefs.getLong(KEY_TURN_DURATION, DEFAULT_TURN_DURATION_MILLIS));
         settings.soundEnabled = prefs.getBoolean(KEY_SOUND_ENABLED, true);
         settings.vibrationEnabled = prefs.getBoolean(KEY_VIBRATION_ENABLED, true);
+        settings.captureBonusStacks = prefs.getBoolean("capture_bonus_stacks", false);
+        settings.reducedMotion = prefs.getBoolean("reduced_motion", false);
         return settings;
+    }
+
+    String exportBackup() throws org.json.JSONException {
+        org.json.JSONObject entries = new org.json.JSONObject();
+        for (java.util.Map.Entry<String, ?> entry : prefs.getAll().entrySet()) {
+            Object value = entry.getValue();
+            String type = value instanceof Boolean ? "boolean" : value instanceof Integer ? "int"
+                    : value instanceof Long ? "long" : value instanceof String ? "string" : null;
+            if (type != null && expectedBackupType(entry.getKey()) != null) entries.put(entry.getKey(), new org.json.JSONObject()
+                    .put("type", type).put("value", value));
+        }
+        return new org.json.JSONObject().put("format", "YutnoriBackup").put("schema", 1)
+                .put("appVersion", BuildConfig.VERSION_NAME).put("savedAt", System.currentTimeMillis())
+                .put("entries", entries).toString();
+    }
+
+    void importBackup(String json) throws org.json.JSONException {
+        if (json == null || json.length() > 2_000_000) throw new org.json.JSONException("Backup too large");
+        org.json.JSONObject root = new org.json.JSONObject(json);
+        if (!"YutnoriBackup".equals(root.getString("format")) || root.getInt("schema") != 1) {
+            throw new org.json.JSONException("Unsupported backup");
+        }
+        org.json.JSONObject entries = root.getJSONObject("entries");
+        if (entries.length() > 6000) throw new org.json.JSONException("Too many entries");
+        java.util.Map<String, Object> values = new java.util.HashMap<>();
+        java.util.Iterator<String> keys = entries.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            if (key.length() > 100) throw new org.json.JSONException("Invalid key");
+            org.json.JSONObject item = entries.getJSONObject(key);
+            String type = item.getString("type");
+            if (!type.equals(expectedBackupType(key))) throw new org.json.JSONException("Invalid entry type");
+            Object value;
+            switch (type) {
+                case "boolean": value = item.getBoolean("value"); break;
+                case "int": value = item.getInt("value"); break;
+                case "long": value = item.getLong("value"); break;
+                case "string": value = item.getString("value"); break;
+                default: throw new org.json.JSONException("Invalid value type");
+            }
+            Object existing = prefs.getAll().get(key);
+            if (existing != null && existing.getClass() != value.getClass()) {
+                throw new org.json.JSONException("Preference type mismatch");
+            }
+            values.put(key, value);
+        }
+        if (!(values.get(KEY_GAME_STARTED) instanceof Boolean)
+                || !(values.get(KEY_TURN_DURATION) instanceof Long)) throw new org.json.JSONException("Missing state");
+        if (Boolean.TRUE.equals(values.get(KEY_GAME_STARTED))) {
+            Object count = values.get(KEY_ENGINE_TEAM_COUNT);
+            if (!(count instanceof Integer) || (int) count < 2 || (int) count > 4) {
+                throw new org.json.JSONException("Invalid team count");
+            }
+            validatePieceArray(values.get(KEY_ENGINE_POSITIONS), false);
+            validatePieceArray(values.get(KEY_ENGINE_FINISHED), true);
+            validatePieceArray(values.get(KEY_ENGINE_ROUTES), false);
+            int undoCount = values.get("undo_history_count") instanceof Integer
+                    ? (int) values.get("undo_history_count") : 0;
+            if (undoCount < 0 || undoCount > MAX_UNDO_ACTIONS) throw new org.json.JSONException("Invalid undo history");
+            for (int i = 0; i < undoCount; i++) {
+                validatePieceArray(values.get("undo_history_" + i + "_engine_positions"), false);
+                validatePieceArray(values.get("undo_history_" + i + "_engine_finished"), true);
+                validatePieceArray(values.get("undo_history_" + i + "_engine_routes"), false);
+            }
+        }
+        SharedPreferences.Editor editor = prefs.edit().clear();
+        for (java.util.Map.Entry<String, Object> entry : values.entrySet()) {
+            Object value = entry.getValue(); String key = entry.getKey();
+            if (value instanceof Boolean) editor.putBoolean(key, (Boolean) value);
+            else if (value instanceof Integer) editor.putInt(key, (Integer) value);
+            else if (value instanceof Long) editor.putLong(key, (Long) value);
+            else editor.putString(key, (String) value);
+        }
+        editor.putBoolean(KEY_TIMER_PAUSED, true);
+        editor.putLong(KEY_GAME_SAVED_AT, System.currentTimeMillis());
+        if (!editor.commit()) throw new org.json.JSONException("Could not save backup");
+    }
+
+    private static void validatePieceArray(Object value, boolean booleans) throws org.json.JSONException {
+        if (!(value instanceof String)) throw new org.json.JSONException("Missing piece array");
+        String[] parts = ((String) value).split(",", -1);
+        if (parts.length != 16) throw new org.json.JSONException("Invalid piece array");
+        for (String part : parts) {
+            if (booleans) {
+                if (!"0".equals(part) && !"1".equals(part)) throw new org.json.JSONException("Invalid flag");
+            } else {
+                try {
+                    int n = Integer.parseInt(part);
+                    if (n < -1 || n > 30) throw new org.json.JSONException("Invalid node");
+                } catch (NumberFormatException error) { throw new org.json.JSONException("Invalid number"); }
+            }
+        }
     }
 
     AppState restoreAppState(int defaultStatusColor) {
@@ -99,6 +193,7 @@ final class GameStateStore {
         engineState.mustRollBeforeMoving = prefs.getBoolean(KEY_ENGINE_MUST_ROLL, false);
         engineState.catchBonusPending = prefs.getBoolean(KEY_ENGINE_CATCH_BONUS, false);
         engineState.gameOver = prefs.getBoolean(KEY_ENGINE_GAME_OVER, false);
+        engineState.captureBonusStacks = prefs.getBoolean("engine_capture_bonus_stacks", true);
         engineState.pendingIds = parseInts(prefs.getString(KEY_ENGINE_PENDING_IDS, ""));
         engineState.pendingSteps = parseInts(prefs.getString(KEY_ENGINE_PENDING_STEPS, ""));
         engineState.selectedResultIds = parseInts(prefs.getString(KEY_ENGINE_SELECTED_IDS, ""));
@@ -115,6 +210,8 @@ final class GameStateStore {
         editor.putLong(KEY_TURN_DURATION, settings.turnDurationMillis);
         editor.putBoolean(KEY_SOUND_ENABLED, settings.soundEnabled);
         editor.putBoolean(KEY_VIBRATION_ENABLED, settings.vibrationEnabled);
+        editor.putBoolean("capture_bonus_stacks", settings.captureBonusStacks);
+        editor.putBoolean("reduced_motion", settings.reducedMotion);
         editor.putBoolean(KEY_GAME_STARTED, appState.gameStarted);
         editor.putBoolean("victory_pending", appState.victoryPending);
         editor.putInt("bonus_time_baseline_result_id", appState.bonusTimeBaselineResultId);
@@ -145,6 +242,7 @@ final class GameStateStore {
         editor.putBoolean(KEY_ENGINE_MUST_ROLL, state.mustRollBeforeMoving);
         editor.putBoolean(KEY_ENGINE_CATCH_BONUS, state.catchBonusPending);
         editor.putBoolean(KEY_ENGINE_GAME_OVER, state.gameOver);
+        editor.putBoolean("engine_capture_bonus_stacks", state.captureBonusStacks);
         editor.putString(KEY_ENGINE_PENDING_IDS, joinInts(state.pendingIds));
         editor.putString(KEY_ENGINE_PENDING_STEPS, joinInts(state.pendingSteps));
         editor.putString(KEY_ENGINE_SELECTED_IDS, joinInts(state.selectedResultIds));
@@ -172,6 +270,8 @@ final class GameStateStore {
             state.statusColor = prefs.getInt(prefix + "color", defaultStatusColor);
             state.turnLog = parseStrings(prefs.getString(prefix + "log", ""));
             state.actionKind = prefs.getInt(prefix + "action", MoveUndoState.MOVE);
+            state.reversePaths = new int[16][];
+            for (int p = 0; p < 16; p++) state.reversePaths[p] = parseInts(prefs.getString(prefix + "path_" + p, ""));
             state.bonusTimeBaselineResultId = prefs.getInt(prefix + "bonus_baseline", 0);
             state.previous = head;
             head = state;
@@ -193,6 +293,8 @@ final class GameStateStore {
             editor.putInt(prefix + "color", state.statusColor);
             editor.putString(prefix + "log", joinStrings(state.turnLog));
             editor.putInt(prefix + "action", state.actionKind);
+            for (int p = 0; p < 16; p++) editor.putString(prefix + "path_" + p,
+                    state.reversePaths == null ? "" : joinInts(state.reversePaths[p]));
             editor.putInt(prefix + "bonus_baseline", state.bonusTimeBaselineResultId);
             state = state.previous;
             count++;
@@ -256,6 +358,7 @@ final class GameStateStore {
         state.mustRollBeforeMoving = prefs.getBoolean(prefix + "must_roll", false);
         state.catchBonusPending = prefs.getBoolean(prefix + "catch_bonus", false);
         state.gameOver = prefs.getBoolean(prefix + "game_over", false);
+        state.captureBonusStacks = prefs.getBoolean(prefix + "capture_bonus_stacks", true);
         state.pendingIds = parseInts(prefs.getString(prefix + "pending_ids", ""));
         state.pendingSteps = parseInts(prefs.getString(prefix + "pending_steps", ""));
         state.selectedResultIds = parseInts(prefs.getString(prefix + "selected_ids", ""));
@@ -277,12 +380,38 @@ final class GameStateStore {
         editor.putBoolean(prefix + "must_roll", state.mustRollBeforeMoving);
         editor.putBoolean(prefix + "catch_bonus", state.catchBonusPending);
         editor.putBoolean(prefix + "game_over", state.gameOver);
+        editor.putBoolean(prefix + "capture_bonus_stacks", state.captureBonusStacks);
         editor.putString(prefix + "pending_ids", joinInts(state.pendingIds));
         editor.putString(prefix + "pending_steps", joinInts(state.pendingSteps));
         editor.putString(prefix + "selected_ids", joinInts(state.selectedResultIds));
         editor.putString(prefix + "positions", joinInts(state.piecePositions));
         editor.putString(prefix + "routes", joinInts(state.pieceRoutes));
         editor.putString(prefix + "finished", joinBooleans(state.pieceFinished));
+    }
+
+    private static String expectedBackupType(String key) {
+        if (key.startsWith("undo_history_") && !key.equals("undo_history_count")) {
+            String suffix = key.replaceFirst("^undo_history_[0-9]+_", "");
+            if (suffix.startsWith("engine_")) return expectedBackupType(suffix);
+            if (suffix.matches("path_[0-9]+|status|log")) return "string";
+            if (suffix.equals("remaining")) return "long";
+            if (suffix.matches("paused|expired")) return "boolean";
+            if (suffix.matches("team|piece|color|action|bonus_baseline")) return "int";
+            return null;
+        }
+        if (key.startsWith("move_undo_engine_")) return expectedBackupType(key.substring(10));
+        if (key.startsWith("engine_")) {
+            String suffix = key.substring(7);
+            if (suffix.matches("team_count|current_team|next_result_id|normal_roll_allowance")) return "int";
+            if (suffix.matches("roll_allowed|must_roll|catch_bonus|game_over|capture_bonus_stacks")) return "boolean";
+            if (suffix.matches("pending_ids|pending_steps|selected_ids|positions|routes|finished")) return "string";
+            return null;
+        }
+        if (key.matches("turn_duration|game_saved_at|remaining_timer|timer_checkpoint|move_undo_remaining_timer")) return "long";
+        if (key.matches("sound_enabled|vibration_enabled|game_started|timer_paused|time_expired|victory_pending|capture_bonus_stacks|reduced_motion|move_undo_available|move_undo_timer_paused|move_undo_time_expired")) return "boolean";
+        if (key.matches("status_text|turn_log|language_tag|team_appearance_colors|team_appearance_shapes|move_undo_status_text|move_undo_turn_log")) return "string";
+        if (key.matches("status_color|selected_team|selected_piece|bonus_time_baseline_result_id|undo_history_count|move_undo_selected_team|move_undo_selected_piece|move_undo_status_color")) return "int";
+        return null;
     }
 
     int getTurnDurationIndex(long turnDurationMillis) {
@@ -397,6 +526,8 @@ final class GameStateStore {
         long turnDurationMillis;
         boolean soundEnabled;
         boolean vibrationEnabled;
+        boolean captureBonusStacks;
+        boolean reducedMotion;
     }
 
     static class AppState {
@@ -422,6 +553,7 @@ final class GameStateStore {
     }
 
     static class MoveUndoState {
+        int[][] reversePaths;
         static final int ROLL = 0, MOVE = 1, TURN = 2;
         int actionKind = MOVE;
         int bonusTimeBaselineResultId;

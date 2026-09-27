@@ -961,6 +961,15 @@ public class ExampleInstrumentedTest {
     private void assertPanelState(
             MainActivity activity,
             boolean expectedControlsOpen) {
+        if (activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            assertEquals(View.VISIBLE, activity.findViewById(R.id.top_panel).getVisibility());
+            assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
+            assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
+            assertEquals(View.VISIBLE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
+            assertEquals(View.VISIBLE, activity.findViewById(R.id.landscape_results).getVisibility());
+            assertSame(activity.findViewById(R.id.top_panel), activity.findViewById(R.id.turn_tools).getParent());
+            return;
+        }
         assertEquals(
                 View.VISIBLE,
                 activity.findViewById(R.id.top_panel).getVisibility());

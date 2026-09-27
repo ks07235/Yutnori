@@ -74,6 +74,20 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout unlimitedWaiting;
     private LinearLayout landscapeResults;
     private boolean unlimitedControlsAttached;
+    private TextView rollHint;
+    private boolean captureBonusStacks;
+    private boolean reducedMotion;
+    private boolean undoAnimating;
+    private int queuedUndoCount;
+    private final ArrayList<View> undoGhosts = new ArrayList<>();
+    private String pendingBackup;
+    private boolean skipPersistence;
+    private final androidx.activity.result.ActivityResultLauncher<String> exportLauncher =
+            registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
+                    uri -> { if (uri != null) writeBackup(uri); else endTimerDialogHold(); });
+    private final androidx.activity.result.ActivityResultLauncher<String[]> importLauncher =
+            registerForActivityResult(new androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+                    uri -> { if (uri != null) readBackup(uri); else endTimerDialogHold(); });
     private FrameLayout boardContainer;
     private BoardOverlayLayout boardOverlay;
     private View boardArt;
@@ -164,6 +178,8 @@ public class MainActivity extends AppCompatActivity {
         boolean restoredGame = restorePersistedGameState();
         if (restoredGame) {
             restoreGameScreen(restoredStatusMessage, restoredStatusColor);
+            showToast(getString(R.string.saved_game_details, game.getTeamCount(),
+                    game.getCurrentTeam() + 1, game.getPendingResults().size()));
         } else {
             showTeamSetup();
             if (savedInstanceState != null) {
@@ -535,6 +551,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showTeamSetup() {
+        cancelMovePresentation(true);
         gameStarted = false;
         victoryPending = false;
         savedGameChoicePending = false;
@@ -587,6 +604,8 @@ public class MainActivity extends AppCompatActivity {
         beginTimerDialogHold();
         YutDialogs.showSavedGameChoice(
                 this,
+                getString(R.string.saved_game_details, game.getTeamCount(), game.getCurrentTeam() + 1,
+                        game.getPendingResults().size()),
                 () -> {
                     savedGameChoiceVisible = false;
                     savedGameChoicePending = false;
@@ -640,6 +659,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startGame(int teamCount) {
+        game.setCaptureBonusStacks(captureBonusStacks);
         YutGameEngine.ActionResult result = game.setTeamCount(teamCount);
         if (!result.success) {
             showToast(result.message);
@@ -923,6 +943,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void undoLastAction() {
+        if (undoAnimating) {
+            int remaining = 0;
+            for (GameStateStore.MoveUndoState state = moveUndoState; state != null; state = state.previous) remaining++;
+            queuedUndoCount = Math.min(remaining, queuedUndoCount + 1);
+            return;
+        }
         if (moveUndoState != null) {
             undoLastMove();
             return;
@@ -976,6 +1002,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         GameStateStore.MoveUndoState state = moveUndoState;
+        YutGameEngine.SavedState before = game.saveState();
         moveUndoState = state.previous;
         game.restoreState(state.engineState);
         victoryPending = false;
@@ -996,6 +1023,9 @@ public class MainActivity extends AppCompatActivity {
         restoreGameScreen(state.statusMessage, state.statusColor);
         playFeedback(GameFeedback.TAP);
         persistGameState();
+        if (state.actionKind == GameStateStore.MoveUndoState.MOVE && !reducedMotion) {
+            animateUndo(before, state);
+        }
     }
 
     private void selectSinglePendingResult() {
@@ -1073,6 +1103,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateResultButtons() {
         resultLayout.removeAllViews();
+        updateRollHint();
         List<YutGameEngine.MoveChoice> moveChoices = game.getMoveChoices();
 
         for (int i = 0; i < moveChoices.size(); i++) {
@@ -1214,6 +1245,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        recordReversePaths(undoCandidate, result);
         pushUndoState(undoCandidate);
         applyMoveResult(result, planText);
     }
@@ -1225,7 +1257,7 @@ public class MainActivity extends AppCompatActivity {
         if (result.turnChanged) {
             startTurnTimer();
         } else if (result.caught) {
-            for (int i = 0; i < result.captureEventCount(); i++) addBonusTime();
+            for (int i = 0; i < result.grantedCaptureRolls; i++) addBonusTime();
         }
         victoryPending = result.gameWon;
         isAnimatingMove = true;
@@ -1278,6 +1310,11 @@ public class MainActivity extends AppCompatActivity {
         // Invalidate callbacks before cancellation can invoke any animator listener.
         layoutGeneration++;
         isAnimatingMove = false;
+        undoAnimating = false;
+        queuedUndoCount = 0;
+        ViewGroup undoRoot = findViewById(R.id.root_layout);
+        for (View ghost : undoGhosts) undoRoot.getOverlay().remove(ghost);
+        undoGhosts.clear();
         for (Animator animator : new ArrayList<>(moveAnimators)) animator.cancel();
         moveAnimators.clear();
         clearFinishAnimation();
@@ -1372,7 +1409,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void animateMoveResult(YutGameEngine.MoveResult result, Runnable onComplete) {
-        if (result.animationSegments.isEmpty()) {
+        if (reducedMotion || result.animationSegments.isEmpty()) {
             onComplete.run();
             return;
         }
@@ -2038,7 +2075,7 @@ public class MainActivity extends AppCompatActivity {
             if (guidanceGeneration != pieceGuideGeneration || !shouldShowPieceGuidance()) {
                 return;
             }
-            addPieceGuides(animateGuidance);
+            addPieceGuides(animateGuidance && !reducedMotion);
         });
     }
 
@@ -2464,11 +2501,11 @@ public class MainActivity extends AppCompatActivity {
     }
     private void applyResponsiveSizing() {
         if (usesLandscapeControls() && !usesCompactWaitingTray()) {
-            setViewWidthIfPresent(R.id.top_panel, 200);
+            setViewWidthIfPresent(R.id.top_panel, 216);
         }
         if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE
                 && usesCompactWaitingTray()) {
-            setViewWidthIfPresent(R.id.top_panel, 128);
+            setViewWidthIfPresent(R.id.top_panel, 144);
             topPanel.setPadding(dp(6), dp(8), dp(6), dp(8));
             setViewWidthIfPresent(R.id.control_panel, 292);
             ((TextView) findViewById(R.id.text_title)).setTextSize(14);
@@ -2737,9 +2774,16 @@ public class MainActivity extends AppCompatActivity {
         int label = canUndoMove && moveUndoState.actionKind == GameStateStore.MoveUndoState.MOVE
                 ? R.string.undo_move : R.string.undo_last;
         undoButton.setText(label);
-        undoButton.setContentDescription(getString(label));
+        String target = canUndoMove ? getString(R.string.undo_target,
+                teamName(moveUndoState.engineState.currentTeam),
+                getString(moveUndoState.actionKind == GameStateStore.MoveUndoState.MOVE ? R.string.undo_kind_move
+                        : moveUndoState.actionKind == GameStateStore.MoveUndoState.ROLL ? R.string.undo_kind_roll : R.string.undo_kind_turn))
+                : getString(label);
+        undoButton.setContentDescription(target);
+        ViewCompat.setTooltipText(undoButton, target);
+        undoButton.setOnLongClickListener(v -> { showToast(target); return true; });
         undoButton.setEnabled(gameStarted
-                && !isAnimatingMove
+                && (!isAnimatingMove || undoAnimating)
                 && (canUndoMove || canUndoRoll));
     }
 
@@ -3061,22 +3105,27 @@ public class MainActivity extends AppCompatActivity {
         turnDurationMillis = settings.turnDurationMillis;
         remainingTurnMillis = turnDurationMillis;
         feedback.setEnabled(settings.soundEnabled, settings.vibrationEnabled);
+        captureBonusStacks = settings.captureBonusStacks;
+        reducedMotion = settings.reducedMotion;
     }
 
     private void showSettingsDialog() {
         beginTimerDialogHold();
+        YutDialogs.SettingsState settingsUi = new YutDialogs.SettingsState(getTurnDurationIndex(),
+                feedback.isSoundEnabled(), feedback.isVibrationEnabled(), turnLog.size());
+        settingsUi.gameStarted = gameStarted;
+        settingsUi.captureBonusStacks = gameStarted ? game.isCaptureBonusStacks() : captureBonusStacks;
+        settingsUi.reducedMotion = reducedMotion;
         YutDialogs.showSettings(
                 this,
-                new YutDialogs.SettingsState(
-                        getTurnDurationIndex(),
-                        feedback.isSoundEnabled(),
-                        feedback.isVibrationEnabled(),
-                        turnLog.size()),
+                settingsUi,
                 new YutDialogs.SettingsActions() {
                     @Override
-                    public void onApply(int turnIndex, boolean soundEnabled, boolean vibrationEnabled) {
+                    public void onApply(int turnIndex, boolean soundEnabled, boolean vibrationEnabled, boolean motion) {
+                        reducedMotion = motion;
+                        if (motion) cancelMovePresentation(true);
                         applySettings(
-                                GameStateStore.TURN_DURATION_OPTIONS_MILLIS[turnIndex],
+                                gameStarted ? turnDurationMillis : GameStateStore.TURN_DURATION_OPTIONS_MILLIS[turnIndex],
                                 soundEnabled,
                                 vibrationEnabled);
                     }
@@ -3101,6 +3150,8 @@ public class MainActivity extends AppCompatActivity {
                     public void onCheckUpdates() {
                         openPlayStoreListing();
                     }
+                    @Override public void onExport() { exportGameBackup(); }
+                    @Override public void onImport() { requestImportGameBackup(); }
                 },
                 this::endTimerDialogHold);
     }
@@ -3110,10 +3161,15 @@ public class MainActivity extends AppCompatActivity {
         YutDialogs.showGameRules(
                 this,
                 getTurnDurationIndex(),
-                turnIndex -> applySettings(
+                gameStarted ? game.isCaptureBonusStacks() : captureBonusStacks,
+                gameStarted,
+                (turnIndex, stacking) -> {
+                    captureBonusStacks = stacking;
+                    applySettings(
                         GameStateStore.TURN_DURATION_OPTIONS_MILLIS[turnIndex],
                         feedback.isSoundEnabled(),
-                        feedback.isVibrationEnabled()),
+                        feedback.isVibrationEnabled());
+                },
                 this::endTimerDialogHold);
     }
 
@@ -3188,6 +3244,7 @@ public class MainActivity extends AppCompatActivity {
         String[] labels = getResources().getStringArray(R.array.turn_duration_labels);
         int index = Math.max(0, Math.min(labels.length - 1, getTurnDurationIndex()));
         String summary = getString(R.string.game_rules_summary, labels[index]);
+        summary += "\n" + getString(captureBonusStacks ? R.string.capture_rule_double : R.string.capture_rule_single);
         textSetupRuleSummary.setText(summary);
 
         View rulesButton = findViewById(R.id.btn_setup_rules);
@@ -3238,7 +3295,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void persistGameState() {
-        if (stateStore == null) {
+        if (stateStore == null || skipPersistence) {
             return;
         }
         syncTimerToNow();
@@ -3246,6 +3303,8 @@ public class MainActivity extends AppCompatActivity {
         settings.turnDurationMillis = turnDurationMillis;
         settings.soundEnabled = feedback != null && feedback.isSoundEnabled();
         settings.vibrationEnabled = feedback != null && feedback.isVibrationEnabled();
+        settings.captureBonusStacks = captureBonusStacks;
+        settings.reducedMotion = reducedMotion;
 
         GameStateStore.AppState appState = new GameStateStore.AppState();
         appState.gameStarted = gameStarted;
@@ -3271,6 +3330,82 @@ public class MainActivity extends AppCompatActivity {
         appState.teamShapes = teamShapes.clone();
         appState.moveUndoState = moveUndoState;
         stateStore.save(settings, appState);
+    }
+
+    private void exportGameBackup() {
+        cancelMovePresentation(true);
+        beginTimerDialogHold();
+        persistGameState();
+        try {
+            pendingBackup = stateStore.exportBackup();
+            exportLauncher.launch("Yutnori-" + BuildConfig.VERSION_NAME + "-game.json");
+        } catch (Exception error) {
+            endTimerDialogHold();
+            showToast(getString(R.string.backup_failed));
+        }
+    }
+
+    private void writeBackup(Uri uri) {
+        String content;
+        try { content = pendingBackup == null ? stateStore.exportBackup() : pendingBackup; }
+        catch (Exception error) { endTimerDialogHold(); showToast(getString(R.string.backup_failed)); return; }
+        String backup = content;
+        pendingBackup = null;
+        new Thread(() -> {
+            boolean success = false;
+            try (java.io.OutputStream output = getContentResolver().openOutputStream(uri, "wt")) {
+                if (output == null || backup == null) throw new java.io.IOException("No destination");
+                output.write(backup.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                success = true;
+            } catch (Exception ignored) { }
+            boolean completed = success;
+            runOnUiThread(() -> {
+                endTimerDialogHold();
+                showToast(getString(completed ? R.string.backup_exported : R.string.backup_failed));
+            });
+        }, "yutnori-export").start();
+    }
+
+    private void requestImportGameBackup() {
+        beginTimerDialogHold();
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.import_game)
+                .setMessage(R.string.backup_replace)
+                .setPositiveButton(R.string.import_game, (ignored, which) -> {
+                    beginTimerDialogHold();
+                    importLauncher.launch(new String[]{"application/json", "text/plain"});
+                }).setNegativeButton(R.string.close, null).create();
+        dialog.setOnDismissListener(ignored -> endTimerDialogHold());
+        dialog.show();
+    }
+
+    private void readBackup(Uri uri) {
+        new Thread(() -> {
+            String json = null;
+            try (java.io.InputStream input = getContentResolver().openInputStream(uri);
+                    java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream()) {
+                if (input == null) throw new java.io.IOException("No backup");
+                byte[] chunk = new byte[8192]; int count;
+                while ((count = input.read(chunk)) != -1) {
+                    if (bytes.size() + count > 2_000_000) throw new java.io.IOException("Backup too large");
+                    bytes.write(chunk, 0, count);
+                }
+                json = bytes.toString("UTF-8");
+            } catch (Exception ignored) { }
+            String backup = json;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                try {
+                    stateStore.importBackup(backup);
+                    skipPersistence = true;
+                    cancelMovePresentation(false);
+                    showToast(getString(R.string.backup_imported));
+                    recreate();
+                } catch (Exception error) {
+                    endTimerDialogHold();
+                    showToast(getString(R.string.backup_failed));
+                }
+            });
+        }, "yutnori-import").start();
     }
 
     private void playFeedback(int type) {
@@ -3443,6 +3578,136 @@ public class MainActivity extends AppCompatActivity {
         return getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
     }
 
+    private void recordReversePaths(GameStateStore.MoveUndoState state, YutGameEngine.MoveResult result) {
+        state.reversePaths = new int[16][];
+        for (int id = 0; id < 4; id++) {
+            ArrayList<Integer> nodes = new ArrayList<>();
+            for (YutGameEngine.MoveAnimation segment : result.animationSegments) {
+                if (!segment.pieceIds.contains(id)) continue;
+                if (nodes.isEmpty()) nodes.add(segment.startNode);
+                nodes.addAll(segment.path);
+            }
+            int[] reversed = new int[nodes.size()];
+            for (int i = 0; i < reversed.length; i++) reversed[i] = nodes.get(nodes.size() - 1 - i);
+            state.reversePaths[result.teamId * 4 + id] = reversed;
+        }
+    }
+
+    private float[] undoPoint(int node, int pieceId, ViewGroup root) {
+        int[] base = new int[2]; int[] origin = new int[2];
+        root.getLocationOnScreen(origin);
+        if (node == BoardPath.START_NODE) {
+            View spot = waitSpots[game.getCurrentTeam()][pieceId];
+            if (spot == null) spot = waitingArea;
+            spot.getLocationOnScreen(base);
+            return new float[]{base[0] - origin[0] + spot.getWidth() / 2f,
+                    base[1] - origin[1] + spot.getHeight() / 2f};
+        }
+        boardOverlay.getLocationOnScreen(base);
+        float[] position = getBoardNodePosition(node == BoardPath.END_NODE ? 15 : node, 0);
+        return new float[]{base[0] - origin[0] + position[0],
+                base[1] - origin[1] + position[1] + (node == BoardPath.END_NODE ? dp(32) : 0)};
+    }
+
+    private void animateUndo(YutGameEngine.SavedState before, GameStateStore.MoveUndoState state) {
+        undoAnimating = true;
+        isAnimatingMove = true;
+        isTimerHeldForAnimation = true;
+        setControlsEnabled(false);
+        clearMovePreviews();
+        int generation = layoutGeneration;
+        ViewGroup root = findViewById(R.id.root_layout);
+        root.post(() -> {
+            if (generation != layoutGeneration || !undoAnimating) return;
+            ArrayList<ArrayList<float[]>> paths = new ArrayList<>();
+            ArrayList<PieceStackView> ghosts = new ArrayList<>();
+            ArrayList<PieceStackView> hidden = new ArrayList<>();
+            int longest = 1;
+            int size = getBoardPieceViewSize();
+            for (int p = 0; p < 16; p++) {
+                if (before.piecePositions[p] == state.engineState.piecePositions[p]
+                        && before.pieceFinished[p] == state.engineState.pieceFinished[p]) continue;
+                int team = p / 4, id = p % 4;
+                ArrayList<float[]> points = new ArrayList<>();
+                points.add(undoPoint(before.piecePositions[p], id, root));
+                int[] recorded = state.reversePaths == null ? null : state.reversePaths[p];
+                if (recorded != null) for (int node : recorded) {
+                    float[] point = undoPoint(node, id, root);
+                    float[] last = points.get(points.size() - 1);
+                    if (Math.hypot(last[0] - point[0], last[1] - point[1]) > 1f) points.add(point);
+                }
+                float[] destination = undoPoint(state.engineState.piecePositions[p], id, root);
+                float[] last = points.get(points.size() - 1);
+                if (Math.hypot(last[0] - destination[0], last[1] - destination[1]) > 1f) points.add(destination);
+                if (points.size() < 2) continue;
+                PieceStackView ghost = new PieceStackView(this);
+                ghost.configureAppearance(teamColors[team], teamShapes[team], id + 1);
+                ghost.setVisualDiameterPx(getBoardPieceSize());
+                ghost.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                ghost.measure(View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY));
+                ghost.layout(0, 0, size, size);
+                ghost.setX(points.get(0)[0] - size / 2f); ghost.setY(points.get(0)[1] - size / 2f);
+                root.getOverlay().add(ghost);
+                undoGhosts.add(ghost); ghosts.add(ghost); paths.add(points);
+                PieceStackView actual = pieceViews[team][id];
+                actual.animate().cancel(); actual.setAlpha(0f); hidden.add(actual);
+                longest = Math.max(longest, points.size() - 1);
+            }
+            if (ghosts.isEmpty()) { finishUndoAnimation(); return; }
+            ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+            moveAnimators.add(animator);
+            // Apply the same per-node timing as forward travel, divided by 1.75.
+            long forwardDuration = 0L;
+            for (int i = 0; i < longest; i++) forwardDuration += Math.max(110, 190 - Math.min(i, 4) * 12);
+            animator.setDuration(Math.max(90L, Math.round(forwardDuration / 1.75f)));
+            animator.setInterpolator(new android.view.animation.LinearInterpolator());
+            animator.addUpdateListener(value -> {
+                float fraction = (float) value.getAnimatedValue();
+                for (int i = 0; i < ghosts.size(); i++) {
+                    ArrayList<float[]> points = paths.get(i);
+                    float step = fraction * (points.size() - 1);
+                    int index = Math.min(points.size() - 2, (int) step);
+                    float progress = step - index;
+                    float[] a = points.get(index), b = points.get(index + 1);
+                    ghosts.get(i).setX(a[0] + (b[0] - a[0]) * progress - size / 2f);
+                    ghosts.get(i).setY(a[1] + (b[1] - a[1]) * progress - size / 2f);
+                }
+            });
+            animator.addListener(new AnimatorListenerAdapter() {
+                private boolean cancelled;
+                @Override public void onAnimationCancel(Animator animation) { cancelled = true; }
+                @Override public void onAnimationEnd(Animator animation) {
+                    moveAnimators.remove(animator);
+                    for (View ghost : ghosts) { root.getOverlay().remove(ghost); undoGhosts.remove(ghost); }
+                    for (View actual : hidden) actual.setAlpha(1f);
+                    if (!cancelled && generation == layoutGeneration) finishUndoAnimation();
+                }
+            });
+            animator.start();
+        });
+    }
+
+    private void finishUndoAnimation() {
+        undoAnimating = false;
+        isAnimatingMove = false;
+        isTimerHeldForAnimation = false;
+        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        renderBoardPiecesNow();
+        setControlsEnabled(true);
+        updatePieceSelectionStyles();
+        updateMovePreviews();
+        persistGameState();
+        drainUndoQueue();
+    }
+
+    private void drainUndoQueue() {
+        if (queuedUndoCount <= 0 || moveUndoState == null) { queuedUndoCount = 0; return; }
+        queuedUndoCount--;
+        undoLastAction();
+        if (!undoAnimating) timerHandler.post(this::drainUndoQueue);
+    }
+
     private void createUnlimitedControls() {
         unlimitedControlsAttached = false;
         ConstraintLayout root = findViewById(R.id.root_layout);
@@ -3451,6 +3716,14 @@ public class MainActivity extends AppCompatActivity {
         unlimitedFooter.setLayoutParams(new ConstraintLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT));
         unlimitedWaiting = createLandscapeColumn(root, R.id.unlimited_waiting, 48);
         landscapeResults = createLandscapeColumn(root, R.id.landscape_results, 60);
+        rollHint = new TextView(this);
+        rollHint.setTag("roll_hint");
+        rollHint.setTextColor(getResources().getColor(R.color.text_primary));
+        rollHint.setGravity(Gravity.CENTER);
+        rollHint.setTextSize(12);
+        rollHint.setMaxLines(2);
+        rollHint.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        findViewById(R.id.btn_bdo).setBackgroundResource(R.drawable.shape_button_backdo);
     }
 
     private LinearLayout createLandscapeColumn(ConstraintLayout root, int id, int widthDp) {
@@ -3502,7 +3775,15 @@ public class MainActivity extends AppCompatActivity {
             scroll.addView(resultLayout, new FrameLayout.LayoutParams(-1, -2));
             landscapeResults.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-            for (int id : new int[]{R.id.turn_tools, R.id.results_row}) {
+            textStatus.setVisibility(View.GONE);
+            findViewById(R.id.text_title).setVisibility(View.GONE);
+            LinearLayout tools = findViewById(R.id.turn_tools);
+            removeFromParent(tools);
+            tools.setOrientation(LinearLayout.VERTICAL);
+            ((LinearLayout) topPanel).addView(tools, 1, new LinearLayout.LayoutParams(-1, dp(80)));
+            textTimer.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(40)));
+            btnTimeStop.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(36)));
+            for (int id : new int[]{R.id.results_row}) {
                 View row = findViewById(id);
                 removeFromParent(row);
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(48));
@@ -3518,7 +3799,9 @@ public class MainActivity extends AppCompatActivity {
             undo.setLayoutParams(undoParams);
 
             addColumnTitle(unlimitedRolls, R.string.roll_controls);
-            int[] buttons = {R.id.btn_do, R.id.btn_gae, R.id.btn_geol, R.id.btn_yut, R.id.btn_mo, R.id.btn_bdo};
+            removeFromParent(rollHint);
+            unlimitedRolls.addView(rollHint, new LinearLayout.LayoutParams(-1, dp(32)));
+            int[] buttons = {R.id.btn_do, R.id.btn_yut, R.id.btn_gae, R.id.btn_mo, R.id.btn_geol, R.id.btn_bdo};
             LinearLayout row = null;
             for (int i = 0; i < buttons.length; i++) {
                 if (i % 2 == 0) {
@@ -3527,6 +3810,7 @@ public class MainActivity extends AppCompatActivity {
                 }
                 View button = findViewById(buttons[i]);
                 removeFromParent(button);
+                button.setPadding(dp(2), dp(3), dp(2), dp(3));
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, 1f);
                 params.setMargins(dp(2), dp(2), dp(2), dp(2));
                 row.addView(button, params);
@@ -3562,9 +3846,9 @@ public class MainActivity extends AppCompatActivity {
             constraints.setVisibility(id, View.VISIBLE);
         }
         boolean compact = usesCompactWaitingTray();
-        constraints.constrainWidth(R.id.unlimited_rolls, dp(compact ? 128 : 168));
+        constraints.constrainWidth(R.id.unlimited_rolls, dp(compact ? 116 : 152));
         constraints.constrainWidth(R.id.unlimited_waiting, dp(compact ? 48 : 60));
-        constraints.constrainWidth(R.id.landscape_results, dp(compact ? 60 : 76));
+        constraints.constrainWidth(R.id.landscape_results, dp(compact ? 56 : 76));
         constraints.connect(R.id.unlimited_rolls, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
         constraints.connect(R.id.unlimited_waiting, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.START, dp(4));
         constraints.connect(R.id.landscape_results, ConstraintSet.END, R.id.unlimited_waiting, ConstraintSet.START, dp(4));
@@ -3589,6 +3873,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateTimerLayout() {
+        updateRollHint();
         boolean timed = turnDurationMillis > 0L;
         boolean landscape = usesLandscapeControls();
         LinearLayout tools = findViewById(R.id.turn_tools);
@@ -3606,6 +3891,18 @@ public class MainActivity extends AppCompatActivity {
         textTimer.setVisibility(View.VISIBLE);
         btnTimeStop.setVisibility(timed ? View.VISIBLE : View.GONE);
         updateUnlimitedControls(landscape);
+    }
+
+    private void updateRollHint() {
+        if (rollHint == null) return;
+        rollHint.setText(game.getPendingResults().isEmpty() ? getString(R.string.roll_first)
+                : game.getNormalRollAllowance() > 0 ? getString(R.string.extra_rolls, game.getNormalRollAllowance())
+                : getString(R.string.select_results_hint));
+        if (!usesLandscapeControls() && gameStarted && !game.getPendingResults().isEmpty()
+                && game.getNormalRollAllowance() > 0) {
+            String base = textStatus.getText().toString().split("\n", 2)[0];
+            textStatus.setText(base + "\n" + getString(R.string.extra_rolls, game.getNormalRollAllowance()));
+        }
     }
 
     private void updateKeepScreenOn() {

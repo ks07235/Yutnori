@@ -29,6 +29,15 @@ final class YutDialogs {
 
         content.addView(createSettingsLabel(context, R.string.settings_turn_time));
         TurnTimeSelector turnTimeSelector = addTurnTimeSelector(context, content, state.checkedTurnIndex);
+        setChildrenEnabled(content, !state.gameStarted);
+        TextView ruleInfo = new TextView(context);
+        ruleInfo.setText(state.gameStarted ? R.string.rules_locked : R.string.capture_bonus_hint);
+        ruleInfo.setTextColor(ContextCompat.getColor(context, R.color.text_secondary));
+        ruleInfo.setPadding(0, dp(context, 8), 0, dp(context, 8));
+        content.addView(ruleInfo);
+        TextView rule = createSettingsLabel(context, state.captureBonusStacks
+                ? R.string.capture_rule_double : R.string.capture_rule_single);
+        content.addView(rule);
 
         TextView feedbackLabel = createSettingsLabel(context, R.string.settings_feedback);
         LinearLayout.LayoutParams feedbackLabelParams = new LinearLayout.LayoutParams(
@@ -42,6 +51,16 @@ final class YutDialogs {
         CheckBox vibrationBox = createSettingsCheckBox(context, R.string.settings_vibration, state.vibrationEnabled);
         content.addView(soundBox);
         content.addView(vibrationBox);
+        CheckBox motionBox = createSettingsCheckBox(context, R.string.reduced_motion, state.reducedMotion);
+        motionBox.setTag("reduced_motion");
+        content.addView(motionBox);
+        content.addView(createSettingsLabel(context, R.string.game_backup));
+        Button exportButton = createUtilityButton(context, R.string.export_game);
+        Button importButton = createUtilityButton(context, R.string.import_game);
+        exportButton.setTag("export_game");
+        importButton.setTag("import_game");
+        content.addView(exportButton);
+        content.addView(importButton);
 
         TextView logLabel = createSettingsLabel(context, R.string.history);
         LinearLayout.LayoutParams logLabelParams = new LinearLayout.LayoutParams(
@@ -89,6 +108,15 @@ final class YutDialogs {
         versionText.setTextSize(13);
         versionText.setPadding(0, dp(context, 5), 0, 0);
         content.addView(versionText);
+        versionText.setTag("app_version");
+        versionText.setMinHeight(dp(context, 48));
+        versionText.setOnClickListener(v -> {
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)
+                    context.getSystemService(Context.CLIPBOARD_SERVICE);
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Yutnori version",
+                    "Yutnori " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"));
+            android.widget.Toast.makeText(context, R.string.version_copied, android.widget.Toast.LENGTH_SHORT).show();
+        });
 
         Button updateButton = createUtilityButton(context, R.string.check_updates);
         LinearLayout.LayoutParams updateButtonParams = new LinearLayout.LayoutParams(
@@ -114,7 +142,7 @@ final class YutDialogs {
         dialog.setOnDismissListener(ignored -> onDismiss.run());
 
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            actions.onApply(turnTimeSelector.selectedIndex(), soundBox.isChecked(), vibrationBox.isChecked());
+            actions.onApply(turnTimeSelector.selectedIndex(), soundBox.isChecked(), vibrationBox.isChecked(), motionBox.isChecked());
             dialog.dismiss();
         });
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
@@ -125,11 +153,23 @@ final class YutDialogs {
         helpButton.setOnClickListener(v -> actions.onShowHelp());
         updateButton.setOnClickListener(v -> actions.onCheckUpdates());
         privacyButton.setOnClickListener(v -> showPrivacyPolicy(context));
+        exportButton.setOnClickListener(v -> { actions.onExport(); dialog.dismiss(); });
+        importButton.setOnClickListener(v -> { actions.onImport(); dialog.dismiss(); });
+    }
+
+    private static void setChildrenEnabled(View view, boolean enabled) {
+        view.setEnabled(enabled);
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) setChildrenEnabled(group.getChildAt(i), enabled);
+        }
     }
 
     static void showGameRules(
             Context context,
             int checkedTurnIndex,
+            boolean captureBonusStacks,
+            boolean locked,
             GameRulesActions actions,
             Runnable onDismiss) {
         LinearLayout content = new LinearLayout(context);
@@ -143,16 +183,33 @@ final class YutDialogs {
         content.addView(description);
 
         TurnTimeSelector selector = addTurnTimeSelector(context, content, checkedTurnIndex);
+        androidx.appcompat.widget.SwitchCompat bonusSwitch = new androidx.appcompat.widget.SwitchCompat(context);
+        bonusSwitch.setText(R.string.capture_bonus_stacks);
+        bonusSwitch.setChecked(captureBonusStacks);
+        bonusSwitch.setTextColor(ContextCompat.getColor(context, R.color.text_primary));
+        bonusSwitch.setMinHeight(dp(context, 56));
+        bonusSwitch.setTag("capture_bonus_stacks");
+        content.addView(bonusSwitch);
+        TextView hint = new TextView(context);
+        hint.setText(R.string.capture_bonus_hint);
+        hint.setTextColor(ContextCompat.getColor(context, R.color.text_secondary));
+        content.addView(hint);
+        if (locked) {
+            setChildrenEnabled(content, false);
+            description.setText(R.string.rules_locked);
+        }
+        ScrollView scroll = new ScrollView(context);
+        scroll.addView(content);
 
         AlertDialog dialog = new AlertDialog.Builder(context)
                 .setTitle(R.string.game_rules)
-                .setView(content)
+                .setView(scroll)
                 .setPositiveButton(R.string.apply, null)
                 .setNegativeButton(R.string.close, null)
                 .show();
         dialog.setOnDismissListener(ignored -> onDismiss.run());
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            actions.onApply(selector.selectedIndex());
+            if (!locked) actions.onApply(selector.selectedIndex(), bonusSwitch.isChecked());
             dialog.dismiss();
         });
     }
@@ -168,10 +225,10 @@ final class YutDialogs {
         dialog.show();
     }
 
-    static void showSavedGameChoice(Context context, Runnable onContinue, Runnable onNewGame) {
+    static void showSavedGameChoice(Context context, String details, Runnable onContinue, Runnable onNewGame) {
         new AlertDialog.Builder(context)
                 .setTitle(R.string.saved_game_title)
-                .setMessage(R.string.saved_game_message)
+                .setMessage(context.getString(R.string.saved_game_message) + "\n\n" + details)
                 .setPositiveButton(R.string.continue_game, (ignored, which) -> onContinue.run())
                 .setNegativeButton(R.string.game_over_new_game, (ignored, which) -> onNewGame.run())
                 .setCancelable(false)
@@ -474,6 +531,9 @@ final class YutDialogs {
     }
 
     static class SettingsState {
+        boolean gameStarted;
+        boolean captureBonusStacks;
+        boolean reducedMotion;
         final int checkedTurnIndex;
         final boolean soundEnabled;
         final boolean vibrationEnabled;
@@ -488,7 +548,9 @@ final class YutDialogs {
     }
 
     interface SettingsActions {
-        void onApply(int turnIndex, boolean soundEnabled, boolean vibrationEnabled);
+        void onApply(int turnIndex, boolean soundEnabled, boolean vibrationEnabled, boolean reducedMotion);
+        void onExport();
+        void onImport();
 
         void onClearLog();
 
@@ -500,6 +562,6 @@ final class YutDialogs {
     }
 
     interface GameRulesActions {
-        void onApply(int turnIndex);
+        void onApply(int turnIndex, boolean captureBonusStacks);
     }
 }

@@ -1,5 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="capture_bonus_stacks">Stack capture bonus on Yut/Mo</string>
+    <string name="capture_bonus_hint">Off: Yut/Mo capture gives one bonus in total. On: throw bonus and capture bonus both apply.</string>
+    <string name="rules_locked">Rules are fixed for this game. Start a new game to change them.</string>
+    <string name="capture_rule_single">Yut/Mo capture: one bonus</string>
+    <string name="capture_rule_double">Yut/Mo capture: two bonuses</string>
+    <string name="reduced_motion">Reduce animations</string>
+    <string name="extra_rolls">Extra throws: %1$d</string>
+    <string name="roll_first">Enter a throw</string>
+    <string name="select_results_hint">Select results, then a piece</string>
+    <string name="undo_target">Undo: %1$s · %2$s</string>
+    <string name="undo_kind_roll">throw input</string>
+    <string name="undo_kind_move">piece movement</string>
+    <string name="undo_kind_turn">end turn</string>
+    <string name="version_copied">Version copied</string>
+    <string name="game_backup">Saved game</string>
+    <string name="export_game">Export game backup</string>
+    <string name="import_game">Import game backup</string>
+    <string name="backup_exported">Game backup exported</string>
+    <string name="backup_imported">Game backup restored</string>
+    <string name="backup_failed">Could not use this backup. The current game is unchanged.</string>
+    <string name="backup_replace">Importing replaces this device’s current game and settings. Continue?</string>
+    <string name="saved_game_details">%1$d teams · Team %2$d · %3$d results remaining</string>
     <string name="pending_results_title">Results</string>
     <string name="roll_controls">Move controls</string>
     <string name="app_name">Yutnori</string>

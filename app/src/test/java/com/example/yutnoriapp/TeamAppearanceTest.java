@@ -4,6 +4,21 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class TeamAppearanceTest {
+    @Test public void randomSuggestionsNeverDuplicateColorsOrShapesOrRepeatTheWholeSet() {
+        java.util.Random random = new java.util.Random(150);
+        int[] colors = TeamAppearance.recommendedColors();
+        int[] shapes = TeamAppearance.recommendedShapes();
+        for (int attempt = 0; attempt < 1000; attempt++) {
+            int[] previousColors = colors.clone(), previousShapes = shapes.clone();
+            TeamAppearance.randomize(colors, shapes, random);
+            assertTrue(TeamAppearance.distinctColors(colors, 4));
+            for (int i = 0; i < 4; i++) {
+                assertTrue(TeamAppearance.isShape(shapes[i]));
+                for (int j = 0; j < i; j++) assertNotEquals(shapes[i], shapes[j]);
+            }
+            assertFalse(java.util.Arrays.equals(colors, previousColors) && java.util.Arrays.equals(shapes, previousShapes));
+        }
+    }
     @Test public void recommendedSetsIncludeForsythiaAndDistinctColorsForEveryTeamCount() {
         for (int count = 2; count <= 4; count++) {
             int[] colors = TeamAppearance.recommendedColors();

@@ -143,7 +143,12 @@ public class RotationStabilityTest {
     }
 
     @Test
-    public void twoCaptureBonusesSurviveMidMoveRotation() {
+    public void captureBonusRulesSurviveMidMoveRotation() {
+        for (boolean stacking : new boolean[]{false, true}) {
+            clearState();
+            InstrumentationRegistry.getInstrumentation().getTargetContext()
+                    .getSharedPreferences("yutnori_state", Context.MODE_PRIVATE).edit()
+                    .putBoolean("capture_bonus_stacks", stacking).commit();
         try (ActivityScenario<MainActivity> s = start()) {
             s.onActivity(a -> {
                 set(a, "isTimerPaused", true);
@@ -159,16 +164,17 @@ public class RotationStabilityTest {
             });
             SystemClock.sleep(900);
             s.onActivity(a -> {
-                assertEquals(2, game(a).getNormalRollAllowance());
-                assertEquals(70_000L, (long) field(a, "remainingTurnMillis"));
+                assertEquals(stacking ? 2 : 1, game(a).getNormalRollAllowance());
+                assertEquals(stacking ? 70_000L : 40_000L, (long) field(a, "remainingTurnMillis"));
                 assertEquals(BoardPath.START_NODE, game(a).getPiece(1, 0).position);
                 assertEquals(BoardPath.START_NODE, game(a).getPiece(1, 1).position);
             });
         }
+        }
     }
 
     @Test
-    public void pendingResultReopensControlsAfterPartialMove() {
+    public void pendingResultStaysVisibleInLandscapeColumnAfterPartialMove() {
         try (ActivityScenario<MainActivity> s = start()) {
             s.onActivity(a -> {
                 a.findViewById(R.id.btn_yut).performClick();
@@ -180,7 +186,13 @@ public class RotationStabilityTest {
             SystemClock.sleep(1_500);
             s.onActivity(a -> {
                 assertEquals(1, game(a).getPendingResults().size());
-                assertEquals(View.VISIBLE, a.findViewById(R.id.control_panel).getVisibility());
+                assertEquals(View.GONE, a.findViewById(R.id.control_panel).getVisibility());
+                assertEquals(View.VISIBLE, a.findViewById(R.id.landscape_results).getVisibility());
+                ViewGroup results = a.findViewById(R.id.layout_results);
+                assertEquals(1, results.getChildCount());
+                assertTrue(results.isShown());
+                results.getChildAt(0).performClick();
+                assertEquals(1, game(a).getSelectedSteps().size());
             });
         }
     }

@@ -83,8 +83,7 @@ final class TeamAppearanceDialog {
             onStart.start(draftColors.clone(), draftShapes.clone());
         });
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
-            System.arraycopy(TeamAppearance.recommendedColors(), 0, draftColors, 0, TeamAppearance.TEAM_COUNT);
-            System.arraycopy(TeamAppearance.recommendedShapes(), 0, draftShapes, 0, TeamAppearance.TEAM_COUNT);
+            TeamAppearance.randomize(draftColors, draftShapes, teamCount, new java.util.Random());
             editor.refresh();
         });
         return dialog;

@@ -44,6 +44,32 @@ final class TeamAppearance {
 
     static int[] recommendedColors() { return new int[]{FORSYTHIA, 1, 0, 3}; }
     static int[] recommendedShapes() { return new int[]{CIRCLE, ROUNDED_SQUARE, DIAMOND, TRIANGLE}; }
+    static void randomize(int[] colors, int[] shapes, java.util.Random random) {
+        randomize(colors, shapes, TEAM_COUNT, random);
+    }
+
+    static void randomize(int[] colors, int[] shapes, int teamCount, java.util.Random random) {
+        int[] oldColors = colors.clone();
+        int[] oldShapes = shapes.clone();
+        int[] palette = shuffled(colorCount(), random);
+        int[] forms = shuffled(SHAPE_COUNT, random);
+        System.arraycopy(palette, 0, colors, 0, TEAM_COUNT);
+        System.arraycopy(forms, 0, shapes, 0, TEAM_COUNT);
+        if (java.util.Arrays.equals(java.util.Arrays.copyOf(oldColors, teamCount), java.util.Arrays.copyOf(colors, teamCount))
+                && java.util.Arrays.equals(java.util.Arrays.copyOf(oldShapes, teamCount), java.util.Arrays.copyOf(shapes, teamCount))) {
+            int first = colors[0]; colors[0] = colors[1]; colors[1] = first;
+        }
+    }
+
+    private static int[] shuffled(int count, java.util.Random random) {
+        int[] values = new int[count];
+        for (int i = 0; i < count; i++) values[i] = i;
+        for (int i = count - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            int value = values[i]; values[i] = values[j]; values[j] = value;
+        }
+        return values;
+    }
     static int[] legacyColors() { return new int[]{0, 1, 2, 3}; }
     static int[] legacyShapes() { return new int[]{CIRCLE, CIRCLE, CIRCLE, CIRCLE}; }
 

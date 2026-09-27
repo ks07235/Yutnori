@@ -27,6 +27,10 @@ public class YutGameEngine {
     private boolean mustRollBeforeMoving = false;
     private boolean catchBonusPending = false;
     private boolean gameOver = false;
+    private boolean captureBonusStacks = false;
+
+    public void setCaptureBonusStacks(boolean enabled) { captureBonusStacks = enabled; }
+    public boolean isCaptureBonusStacks() { return captureBonusStacks; }
 
     public YutGameEngine() {
         this(GameText.korean());
@@ -203,6 +207,7 @@ public class YutGameEngine {
             List<Integer> groupedPieceIds = findGroupedPieces(teamId, originalPosition, pieceId);
             BoardPath.MoveTrace trace = boardPath.trace(selectedPiece, selectedResult.steps);
             MoveAnimation animation = new MoveAnimation(groupedPieceIds, originalPosition, trace.visitedNodes);
+            animation.bonusRoll = isBonusRoll(selectedResult.steps);
             result.targetNode = trace.node;
             result.animationPath.addAll(trace.visitedNodes);
             result.animationSegments.add(animation);
@@ -264,12 +269,18 @@ public class YutGameEngine {
         }
 
         if (!result.caughtPieces.isEmpty()) {
-            normalRollAllowance += result.captureEventCount();
-            rollAllowed = true;
-            mustRollBeforeMoving = true;
-            catchBonusPending = true;
+            for (MoveAnimation segment : result.animationSegments) {
+                if (!segment.caughtPieces.isEmpty() && (captureBonusStacks || !segment.bonusRoll)) {
+                    result.grantedCaptureRolls++;
+                }
+            }
+            normalRollAllowance += result.grantedCaptureRolls;
+            rollAllowed = normalRollAllowance > 0;
+            mustRollBeforeMoving = result.grantedCaptureRolls > 0;
+            catchBonusPending = mustRollBeforeMoving;
             result.caught = true;
-            result.message = text.capturedBonus();
+            if (mustRollBeforeMoving) result.message = text.capturedBonus();
+            else finishTurnAfterMove(result);
             return result;
         }
 
@@ -485,6 +496,7 @@ public class YutGameEngine {
         state.normalRollAllowance = normalRollAllowance;
         state.catchBonusPending = catchBonusPending;
         state.gameOver = gameOver;
+        state.captureBonusStacks = captureBonusStacks;
 
         state.pendingIds = new int[pendingResults.size()];
         state.pendingSteps = new int[pendingResults.size()];
@@ -528,6 +540,7 @@ public class YutGameEngine {
         mustRollBeforeMoving = state.mustRollBeforeMoving;
         catchBonusPending = state.catchBonusPending;
         gameOver = state.gameOver;
+        captureBonusStacks = state.captureBonusStacks;
 
         pendingResults.clear();
         int pendingCount = Math.min(lengthOf(state.pendingIds), lengthOf(state.pendingSteps));
@@ -727,6 +740,8 @@ public class YutGameEngine {
     }
 
     public static class SavedState {
+        // Old saved games used stacking. New engines default to the one-bonus rule.
+        public boolean captureBonusStacks = true;
         public int teamCount;
         public int currentTeam;
         public int nextResultId;
@@ -808,6 +823,7 @@ public class YutGameEngine {
         public int startNode = BoardPath.START_NODE;
         public int targetNode = BoardPath.START_NODE;
         public boolean caught = false;
+        public int grantedCaptureRolls;
         public boolean turnChanged = false;
         public boolean gameWon = false;
         public String message;
@@ -839,6 +855,7 @@ public class YutGameEngine {
     }
 
     public static class MoveAnimation {
+        public boolean bonusRoll;
         public final ArrayList<Integer> pieceIds = new ArrayList<>();
         public final ArrayList<Integer> arrivedPieceIds = new ArrayList<>();
         public final ArrayList<PieceRef> caughtPieces = new ArrayList<>();

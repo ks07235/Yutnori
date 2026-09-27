@@ -1,5 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="capture_bonus_stacks">윷·모 잡기 보너스 중복 허용</string>
+    <string name="capture_bonus_hint">끄기: 윷·모로 잡으면 추가 기회 총 1회. 켜기: 윷·모와 잡기 보너스를 각각 인정해 총 2회.</string>
+    <string name="rules_locked">진행 중인 게임의 규칙은 고정됩니다. 새 게임에서 변경하세요.</string>
+    <string name="capture_rule_single">윷·모 잡기: 추가 기회 총 1회</string>
+    <string name="capture_rule_double">윷·모 잡기: 추가 기회 총 2회</string>
+    <string name="reduced_motion">애니메이션 줄이기</string>
+    <string name="extra_rolls">추가 던지기 %1$d회</string>
+    <string name="roll_first">윷을 입력하세요</string>
+    <string name="select_results_hint">결과 → 말 선택</string>
+    <string name="undo_target">취소: %1$s · %2$s</string>
+    <string name="undo_kind_roll">윷 입력</string>
+    <string name="undo_kind_move">말 이동</string>
+    <string name="undo_kind_turn">턴 종료</string>
+    <string name="version_copied">버전을 복사했습니다</string>
+    <string name="game_backup">게임 저장 파일</string>
+    <string name="export_game">게임 저장 파일 내보내기</string>
+    <string name="import_game">게임 저장 파일 가져오기</string>
+    <string name="backup_exported">게임 저장 파일을 내보냈습니다</string>
+    <string name="backup_imported">게임 저장 파일을 복원했습니다</string>
+    <string name="backup_failed">저장 파일을 사용할 수 없습니다. 현재 게임은 유지됩니다.</string>
+    <string name="backup_replace">가져오면 현재 기기의 게임과 설정을 바꿉니다. 계속할까요?</string>
+    <string name="saved_game_details">%1$d팀 · %2$d팀 차례 · 남은 결과 %3$d개</string>
     <string name="pending_results_title">나온 윷</string>
     <string name="roll_controls">윷 진행버튼</string>
     <string name="app_name">윷놀이</string>

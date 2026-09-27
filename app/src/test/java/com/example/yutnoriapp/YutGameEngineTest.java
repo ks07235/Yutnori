@@ -837,6 +837,7 @@ public class YutGameEngineTest {
     @Test
     public void separateCaptureLandingsEachGrantOneAdditionalInput() {
         YutGameEngine game = new YutGameEngine();
+        game.setCaptureBonusStacks(true);
         game.getPiece(1, 0).position = 16;
         game.getPiece(1, 1).position = 0;
         game.addRoll(1);
@@ -849,6 +850,63 @@ public class YutGameEngineTest {
         assertTrue(game.addRoll(1).success);
         assertTrue(game.addRoll(2).success);
         assertFalse(game.addRoll(3).success);
+    }
+
+    @Test public void yutAndMoCaptureDefaultToOneBonusAndCanOptIntoTwo() {
+        for (int steps : new int[]{4, 5}) for (boolean stacking : new boolean[]{false, true}) {
+            YutGameEngine game = new YutGameEngine();
+            game.setCaptureBonusStacks(stacking);
+            game.getPiece(1, 0).position = new BoardPath().trace(game.getPiece(0, 0), steps).node;
+            assertTrue(game.addRoll(steps).success);
+            game.selectResult(0);
+            YutGameEngine.MoveResult move = game.moveSelectedPiece(0, 0);
+            assertTrue(move.caught);
+            assertEquals(stacking ? 1 : 0, move.grantedCaptureRolls);
+            assertEquals(stacking ? 2 : 1, game.getNormalRollAllowance());
+            assertTrue(game.addRoll(1).success);
+            assertEquals(stacking, game.addRoll(2).success);
+            assertFalse(game.addRoll(3).success);
+        }
+    }
+
+    @Test public void alreadyUsedYutBonusDoesNotReturnWhenYutCaptures() {
+        YutGameEngine game = new YutGameEngine();
+        assertFalse(game.isCaptureBonusStacks());
+        game.getPiece(1, 0).position = 19;
+        game.addRoll(4);
+        game.addRoll(1);
+        game.selectResult(0);
+        YutGameEngine.MoveResult move = game.moveSelectedPiece(0, 0);
+        assertTrue(move.caught);
+        assertEquals(0, move.grantedCaptureRolls);
+        assertEquals(0, game.getNormalRollAllowance());
+        assertFalse(game.addRoll(2).success);
+        assertTrue(game.selectResult(0).success);
+    }
+
+    @Test public void mixedPlanGrantsCaptureOnlyForNonBonusLandingByDefault() {
+        YutGameEngine game = new YutGameEngine();
+        game.getPiece(1, 0).position = 16;
+        game.getPiece(1, 1).position = 0;
+        game.addRoll(1); game.addRoll(4);
+        game.selectResult(0); game.selectResult(1);
+        YutGameEngine.MoveResult move = game.moveSelectedPiece(0, 0);
+        assertEquals(2, move.captureEventCount());
+        assertEquals(1, move.grantedCaptureRolls);
+        assertEquals(1, game.getNormalRollAllowance());
+    }
+
+    @Test public void captureRuleSurvivesEngineSaveAndRestoreAndLegacyUsesStacking() {
+        YutGameEngine original = new YutGameEngine();
+        original.setCaptureBonusStacks(false);
+        YutGameEngine restored = new YutGameEngine();
+        restored.restoreState(original.saveState());
+        assertFalse(restored.isCaptureBonusStacks());
+        original.setCaptureBonusStacks(true);
+        restored.restoreState(original.saveState());
+        assertTrue(restored.isCaptureBonusStacks());
+        restored.restoreState(new YutGameEngine.SavedState());
+        assertTrue(restored.isCaptureBonusStacks());
     }
 
     @Test

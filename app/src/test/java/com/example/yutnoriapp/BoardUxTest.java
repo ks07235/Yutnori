@@ -567,6 +567,148 @@ public class BoardUxTest {
         screenshot(name, activity.findViewById(R.id.root_layout));
     }
 
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
+    public void landscapeTimerMovesLeftWithoutShrinkingBoardAndButtonsUseColumnOrder() throws Exception {
+        assertEquals(View.GONE, activity.findViewById(R.id.text_status).getVisibility());
+        assertEquals(View.GONE, activity.findViewById(R.id.text_title).getVisibility());
+        assertSame(activity.findViewById(R.id.top_panel), activity.findViewById(R.id.turn_tools).getParent());
+        assertTrue(bounds(activity.findViewById(R.id.top_panel)).contains(bounds(activity.findViewById(R.id.text_timer))));
+        assertTrue(bounds(activity.findViewById(R.id.top_panel)).contains(bounds(activity.findViewById(R.id.btn_time_stop))));
+        assertTrue(activity.findViewById(R.id.board_container).getWidth() >= 248);
+        int[] left = {R.id.btn_do, R.id.btn_gae, R.id.btn_geol};
+        int[] right = {R.id.btn_yut, R.id.btn_mo, R.id.btn_bdo};
+        for (int i = 0; i < 3; i++) {
+            assertEquals(bounds(activity.findViewById(left[i])).top, bounds(activity.findViewById(right[i])).top);
+            assertTrue(bounds(activity.findViewById(left[i])).right <= bounds(activity.findViewById(right[i])).left);
+            if (i > 0) assertTrue(bounds(activity.findViewById(left[i - 1])).bottom <= bounds(activity.findViewById(left[i])).top);
+        }
+        call("handleYutInput", 4); settle();
+        assertExtraThrowHint();
+        screenshot("v150-landscape");
+    }
+
+    private void assertExtraThrowHint() {
+        android.widget.TextView hint = (android.widget.TextView) field(activity, "rollHint");
+        assertEquals(activity.getString(R.string.extra_rolls, 1), hint.getText().toString());
+    }
+
+    @Test public void undoMovementHasVisibleReverseMotionAndQueuesRepeatedRequests() throws Exception {
+        settings(0L);
+        for (int steps = 1; steps <= 3; steps++) {
+            int team = game().getCurrentTeam();
+            call("handleYutInput", steps); call("selectPiece", team, 0);
+            call("commitSelectedMove"); settle();
+        }
+        ShadowChoreographer.setPaused(true);
+        call("undoLastAction"); call("undoLastAction"); call("undoLastAction");
+        assertEquals(true, field(activity, "undoAnimating"));
+        assertEquals(2, field(activity, "queuedUndoCount"));
+        advanceFrames(32);
+        java.util.List<View> ghosts = (java.util.List<View>) field(activity, "undoGhosts");
+        assertFalse(ghosts.isEmpty());
+        View ghost = ghosts.get(0);
+        float x = ghost.getX(), y = ghost.getY();
+        advanceFrames(64);
+        assertTrue(Math.hypot(ghost.getX() - x, ghost.getY() - y) > 1f);
+        screenshot("v150-undo-motion");
+        advanceFrames(1600);
+        settle();
+        assertEquals(false, field(activity, "undoAnimating"));
+        assertEquals(0, field(activity, "queuedUndoCount"));
+        assertEquals(1, game().getCurrentTeam());
+        assertEquals(BoardPath.START_NODE, game().getPiece(1, 0).position);
+        assertEquals(BoardPath.START_NODE, game().getPiece(2, 0).position);
+        assertEquals(1, game().getPendingResults().size());
+    }
+
+    @Test public void reducedMotionSkipsMoveAndUndoTravelButKeepsFinalState() throws Exception {
+        java.lang.reflect.Field reduced = MainActivity.class.getDeclaredField("reducedMotion");
+        reduced.setAccessible(true); reduced.setBoolean(activity, true);
+        settings(0L);
+        call("handleYutInput", 1); call("selectPiece", 0, 0); call("commitSelectedMove");
+        assertEquals(false, field(activity, "isAnimatingMove"));
+        settle();
+        assertEquals(16, game().getPiece(0, 0).position);
+        call("undoLastAction");
+        assertEquals(false, field(activity, "undoAnimating"));
+        assertEquals(BoardPath.START_NODE, game().getPiece(0, 0).position);
+        settle();
+    }
+
+    @Test public void rotationDuringUndoKeepsRestoredStateAndRemovesGhosts() {
+        settings(0L); call("handleYutInput", 3); call("selectPiece", 0, 0);
+        call("commitSelectedMove"); settle();
+        ShadowChoreographer.setPaused(true);
+        call("undoLastAction"); advanceFrames(32);
+        rotate("ko-rKR-w640dp-h360dp-land-mdpi");
+        assertEquals(false, field(activity, "undoAnimating"));
+        assertTrue(((java.util.List<?>) field(activity, "undoGhosts")).isEmpty());
+        assertEquals(BoardPath.START_NODE, game().getPiece(0, 0).position);
+        ShadowChoreographer.setPaused(false);
+        controller.pause().stop().destroy();
+        controller = Robolectric.buildActivity(MainActivity.class).setup().visible();
+        activity = controller.get(); settle();
+        assertEquals(BoardPath.START_NODE, game().getPiece(0, 0).position);
+        assertEquals(1, game().getPendingResults().size());
+    }
+
+    @Test public void backupRoundTripIncludesRuleAppearanceSelectionAndUndoPaths() throws Exception {
+        settings(0L);
+        call("handleYutInput", 4); call("selectPiece", 0, 0); call("commitSelectedMove"); settle();
+        GameStateStore store = (GameStateStore) field(activity, "stateStore");
+        String backup = store.exportBackup();
+        call("endCurrentTurn"); settle();
+        store.importBackup(backup);
+        GameStateStore.AppState restored = store.restoreAppState(0);
+        assertEquals(0, restored.engineState.currentTeam);
+        assertFalse(restored.engineState.captureBonusStacks);
+        assertEquals(19, restored.engineState.piecePositions[0]);
+        assertTrue(restored.timerPaused);
+        assertArrayEquals((int[]) field(activity, "teamColors"), restored.teamColors);
+        assertArrayEquals((int[]) field(activity, "teamShapes"), restored.teamShapes);
+        assertNotNull(restored.moveUndoState.reversePaths[0]);
+        assertTrue(restored.moveUndoState.reversePaths[0].length >= 4);
+    }
+
+    @Test public void malformedBackupNeverReplacesCurrentGame() throws Exception {
+        call("handleYutInput", 2); call("selectPiece", 0, 0); call("commitSelectedMove"); settle();
+        GameStateStore store = (GameStateStore) field(activity, "stateStore");
+        String backup = store.exportBackup();
+        for (int corruption = 0; corruption < 4; corruption++) {
+            org.json.JSONObject json = new org.json.JSONObject(backup);
+            if (corruption == 0) json.put("schema", 999);
+            if (corruption == 1) json.getJSONObject("entries").getJSONObject("engine_positions").put("value", "invalid");
+            if (corruption == 2) json.getJSONObject("entries").getJSONObject("engine_current_team").put("type", "string");
+            if (corruption == 3) json.getJSONObject("entries").remove("game_started");
+            try { store.importBackup(json.toString()); fail("Invalid backup must be rejected"); }
+            catch (org.json.JSONException expected) { }
+            assertEquals(17, store.restoreAppState(0).engineState.piecePositions[0]);
+        }
+    }
+
+    @Test public void ruleSwitchOnlyChangesBeforeStartAndSettingsCopyActualVersion() {
+        call("showTeamSetup"); call("showGameRulesDialog");
+        AlertDialog rules = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        androidx.appcompat.widget.SwitchCompat toggle = rules.getWindow().getDecorView().findViewWithTag("capture_bonus_stacks");
+        assertFalse(toggle.isChecked()); toggle.setChecked(true);
+        rules.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        activity.findViewById(R.id.btn_team_4).performClick();
+        ((AlertDialog) field(activity, "teamAppearanceDialog")).getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        settle(); assertTrue(game().isCaptureBonusStacks());
+        call("showGameRulesDialog");
+        rules = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        toggle = rules.getWindow().getDecorView().findViewWithTag("capture_bonus_stacks");
+        assertFalse(toggle.isEnabled()); assertTrue(toggle.isChecked()); rules.dismiss();
+        call("showSettingsDialog");
+        AlertDialog settings = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        View version = settings.getWindow().getDecorView().findViewWithTag("app_version");
+        version.performClick();
+        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        assertEquals("Yutnori " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")",
+                clipboard.getPrimaryClip().getItemAt(0).getText().toString());
+        settings.dismiss();
+    }
+
     private void screenshot(String name, View root) throws Exception {
         Bitmap image = Bitmap.createBitmap(root.getWidth(), root.getHeight(), Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(image);
