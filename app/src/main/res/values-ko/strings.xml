@@ -2,7 +2,8 @@
 <resources>
     <string name="capture_bonus_stacks">윷·모 잡기 보너스 중복 허용</string>
     <string name="capture_bonus_hint">끄기: 윷·모로 잡으면 추가 기회 총 1회. 켜기: 윷·모와 잡기 보너스를 각각 인정해 총 2회.</string>
-    <string name="rules_locked">진행 중인 게임의 규칙은 고정됩니다. 새 게임에서 변경하세요.</string>
+    <string name="rules_locked">시간 제한은 지금 변경할 수 있습니다. 잡기 보너스 규칙은 새 게임에서 변경하세요.</string>
+    <string name="restart_game">다시하기</string>
     <string name="capture_rule_single">윷·모 잡기: 추가 기회 총 1회</string>
     <string name="capture_rule_double">윷·모 잡기: 추가 기회 총 2회</string>
     <string name="reduced_motion">애니메이션 줄이기</string>
@@ -28,10 +29,10 @@
     <string name="settings">설정</string>
     <string name="recent_history">최근 기록</string>
     <string name="new_game">새 게임</string>
-    <string name="new_game_title">새 게임 시작</string>
-    <string name="new_game_message">현재 게임 기록과 말의 위치를 모두 초기화하고 새 게임을 시작할까요?</string>
+    <string name="new_game_title">다시 시작할까요?</string>
+    <string name="new_game_message">다시하기: 팀과 말 꾸미기·규칙·시간은 그대로, 말 위치와 기록만 초기화합니다.\n새 게임: 팀 선택과 설정 화면으로 이동합니다. 마지막 말 꾸미기는 기억합니다.</string>
     <string name="new_game_confirm_countdown">네 (%1$d초)</string>
-    <string name="new_game_confirm_ready">네, 새 게임</string>
+    <string name="new_game_confirm_ready">새 게임</string>
     <string name="no">아니요</string>
     <string name="close">닫기</string>
     <string name="apply">적용</string>

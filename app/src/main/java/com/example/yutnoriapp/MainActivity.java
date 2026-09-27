@@ -378,6 +378,7 @@ public class MainActivity extends AppCompatActivity {
         bindPressAction(R.id.btn_setup_rules, this::showGameRulesDialog);
         bindPressAction(R.id.btn_setup_help, this::showHowToPlayDialog);
         bindPressAction(R.id.btn_restart, this::requestNewGame);
+        ((TextView) findViewById(R.id.btn_restart)).setText(R.string.restart_game);
 
         setContentDescriptionIfPresent(R.id.btn_bdo, getString(R.string.yut_backdo_description));
         setContentDescriptionIfPresent(R.id.btn_do, getString(R.string.yut_do_description));
@@ -584,7 +585,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestNewGame() {
-        if (!gameStarted || game.isGameOver()) {
+        if (!gameStarted) {
             showTeamSetup();
             return;
         }
@@ -592,6 +593,11 @@ public class MainActivity extends AppCompatActivity {
         beginTimerDialogHold();
         YutDialogs.showNewGameConfirmation(
                 this,
+                () -> {
+                    cancelMovePresentation(true);
+                    captureBonusStacks = game.isCaptureBonusStacks();
+                    startGame(game.getTeamCount());
+                },
                 this::showTeamSetup,
                 this::endTimerDialogHold);
     }
@@ -628,7 +634,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showTeamAppearanceSetup(int teamCount) {
-        showTeamAppearanceSetup(teamCount, TeamAppearance.recommendedColors(), TeamAppearance.recommendedShapes());
+        showTeamAppearanceSetup(teamCount, stateStore.lastTeamColors(teamCount), stateStore.lastTeamShapes());
     }
 
     private void showTeamAppearanceSetup(int teamCount, int[] colors, int[] shapes) {
@@ -772,7 +778,8 @@ public class MainActivity extends AppCompatActivity {
                 row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 finishedSummaryLayout.addView(row, new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT, dp(30)));
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        dp(landscape ? landscapeTeamRowHeight() : 30)));
             }
             createFinishedTeamSummary(team, row);
         }
@@ -847,7 +854,7 @@ public class MainActivity extends AppCompatActivity {
                 TypedValue.COMPLEX_UNIT_SP);
         row.addView(label, new LinearLayout.LayoutParams(
                 vertical ? LinearLayout.LayoutParams.MATCH_PARENT : dp(40),
-                vertical ? dp(24) : LinearLayout.LayoutParams.WRAP_CONTENT));
+                vertical ? dp(32) : LinearLayout.LayoutParams.WRAP_CONTENT));
         if (vertical) label.setGravity(Gravity.CENTER);
 
         LinearLayout spots = new LinearLayout(this);
@@ -869,7 +876,7 @@ public class MainActivity extends AppCompatActivity {
             spot.setOnClickListener(v -> selectPiece(team, pieceId));
             LinearLayout.LayoutParams spotParams = new LinearLayout.LayoutParams(dp(48), dp(48));
             int spotMargin = 0;
-            spotParams.setMargins(spotMargin, 0, spotMargin, 0);
+            spotParams.setMargins(spotMargin, vertical ? dp(landscapeSpacing()) : 0, spotMargin, 0);
             spots.addView(spot, spotParams);
             waitSpots[team][id] = spot;
         }
@@ -3142,7 +3149,7 @@ public class MainActivity extends AppCompatActivity {
                         reducedMotion = motion;
                         if (motion) cancelMovePresentation(true);
                         applySettings(
-                                gameStarted ? turnDurationMillis : GameStateStore.TURN_DURATION_OPTIONS_MILLIS[turnIndex],
+                                GameStateStore.TURN_DURATION_OPTIONS_MILLIS[turnIndex],
                                 soundEnabled,
                                 vibrationEnabled);
                     }
@@ -3274,6 +3281,9 @@ public class MainActivity extends AppCompatActivity {
         GameStateStore.AppState appState = stateStore.restoreAppState(
                 getResources().getColor(R.color.text_status));
         if (appState == null) {
+            teamColors = stateStore.lastTeamColors(YutGameEngine.MAX_TEAM_COUNT);
+            teamShapes = stateStore.lastTeamShapes();
+            applyTeamAppearance();
             return false;
         }
 
@@ -3766,7 +3776,17 @@ public class MainActivity extends AppCompatActivity {
         title.setTextSize(12);
         title.setGravity(Gravity.CENTER);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        column.addView(title, new LinearLayout.LayoutParams(-1, dp(24)));
+        column.addView(title, new LinearLayout.LayoutParams(-1, dp(32)));
+    }
+
+    private int landscapeSpacing() {
+        int height = getResources().getConfiguration().screenHeightDp;
+        return height <= 320 ? 2 : height >= 400 ? 6 : 4;
+    }
+
+    private int landscapeTeamRowHeight() {
+        int height = getResources().getConfiguration().screenHeightDp;
+        return turnDurationMillis <= 0L ? (height >= 400 ? 44 : 40) : (height >= 400 ? 36 : 30);
     }
 
     private boolean usesVerticalWaitingTray() {
@@ -3836,7 +3856,7 @@ public class MainActivity extends AppCompatActivity {
                 removeFromParent(button);
                 button.setPadding(dp(2), dp(3), dp(2), dp(3));
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, 1f);
-                params.setMargins(dp(2), dp(2), dp(2), dp(2));
+                params.setMargins(dp(2), dp(landscapeSpacing()), dp(2), dp(landscapeSpacing()));
                 row.addView(button, params);
             }
             updateResultButtons();
@@ -3909,6 +3929,17 @@ public class MainActivity extends AppCompatActivity {
         boolean timed = turnDurationMillis > 0L;
         boolean landscape = usesLandscapeControls();
         LinearLayout tools = findViewById(R.id.turn_tools);
+        if (landscape) {
+            for (int i = 0; i < finishedSummaryLayout.getChildCount(); i++) {
+                View row = finishedSummaryLayout.getChildAt(i);
+                ViewGroup.LayoutParams params = row.getLayoutParams();
+                int height = dp(landscapeTeamRowHeight());
+                if (params.height != height) {
+                    params.height = height;
+                    row.setLayoutParams(params);
+                }
+            }
+        }
         LinearLayout results = findViewById(R.id.results_row);
         View endTurn = findViewById(R.id.btn_end_turn);
         LinearLayout destination = landscape ? results : tools;

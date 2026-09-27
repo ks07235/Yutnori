@@ -161,6 +161,18 @@ final class GameStateStore {
         }
     }
 
+    int[] lastTeamColors(int teamCount) {
+        String saved = prefs.getString("team_appearance_colors", "");
+        return saved.isEmpty() ? TeamAppearance.recommendedColors()
+                : TeamAppearance.restoreColors(parseInts(saved), teamCount);
+    }
+
+    int[] lastTeamShapes() {
+        String saved = prefs.getString("team_appearance_shapes", "");
+        return saved.isEmpty() ? TeamAppearance.recommendedShapes()
+                : TeamAppearance.restoreShapes(parseInts(saved));
+    }
+
     AppState restoreAppState(int defaultStatusColor) {
         if (!prefs.getBoolean(KEY_GAME_STARTED, false) || !prefs.contains(KEY_ENGINE_TEAM_COUNT)) {
             return null;

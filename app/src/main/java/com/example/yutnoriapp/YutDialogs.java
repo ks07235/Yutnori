@@ -29,7 +29,6 @@ final class YutDialogs {
 
         content.addView(createSettingsLabel(context, R.string.settings_turn_time));
         TurnTimeSelector turnTimeSelector = addTurnTimeSelector(context, content, state.checkedTurnIndex);
-        setChildrenEnabled(content, !state.gameStarted);
         TextView ruleInfo = new TextView(context);
         ruleInfo.setText(state.gameStarted ? R.string.rules_locked : R.string.capture_bonus_hint);
         ruleInfo.setTextColor(ContextCompat.getColor(context, R.color.text_secondary));
@@ -195,7 +194,7 @@ final class YutDialogs {
         hint.setTextColor(ContextCompat.getColor(context, R.color.text_secondary));
         content.addView(hint);
         if (locked) {
-            setChildrenEnabled(content, false);
+            bonusSwitch.setEnabled(false);
             description.setText(R.string.rules_locked);
         }
         ScrollView scroll = new ScrollView(context);
@@ -209,7 +208,7 @@ final class YutDialogs {
                 .show();
         dialog.setOnDismissListener(ignored -> onDismiss.run());
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-            if (!locked) actions.onApply(selector.selectedIndex(), bonusSwitch.isChecked());
+            actions.onApply(selector.selectedIndex(), bonusSwitch.isChecked());
             dialog.dismiss();
         });
     }
@@ -275,16 +274,27 @@ final class YutDialogs {
     }
 
     static void showNewGameConfirmation(Context context, Runnable onConfirm, Runnable onDismiss) {
+        showNewGameConfirmation(context, onConfirm, onConfirm, onDismiss);
+    }
+
+    static void showNewGameConfirmation(Context context, Runnable onRestart, Runnable onConfirm, Runnable onDismiss) {
         AlertDialog dialog = new AlertDialog.Builder(context)
                 .setTitle(R.string.new_game_title)
                 .setMessage(R.string.new_game_message)
                 .setPositiveButton(R.string.new_game_confirm_ready, null)
+                .setNeutralButton(R.string.restart_game, null)
                 .setNegativeButton(R.string.no, null)
                 .create();
 
         CountDownTimer[] countdown = new CountDownTimer[1];
         dialog.setOnShowListener(ignored -> {
             Button confirmButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            Button restartButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+            restartButton.setEnabled(false);
+            restartButton.setOnClickListener(v -> {
+                onRestart.run();
+                dialog.dismiss();
+            });
             confirmButton.setEnabled(false);
             confirmButton.setOnClickListener(v -> {
                 onConfirm.run();
@@ -302,6 +312,7 @@ final class YutDialogs {
                 public void onFinish() {
                     confirmButton.setText(R.string.new_game_confirm_ready);
                     confirmButton.setEnabled(true);
+                    restartButton.setEnabled(true);
                 }
             };
             countdown[0].start();
@@ -413,6 +424,7 @@ final class YutDialogs {
         content.addView(selectedValue, selectedParams);
 
         Slider slider = new Slider(context);
+        slider.setTag("turn_time_selector");
         slider.setValueFrom(0f);
         slider.setValueTo(maxIndex);
         slider.setStepSize(1f);

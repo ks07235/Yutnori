@@ -632,6 +632,62 @@ public class BoardUxTest {
         assertInfoVisible();
     }
 
+    @Test public void activeSettingsCanSwitchBetweenTimedAndUnlimitedWithoutResettingPieces() {
+        call("handleYutInput", 2); call("selectPiece", 0, 0); call("commitSelectedMove"); settle();
+        int position = game().getPiece(0, 0).position;
+        for (int index : new int[]{4, 2}) {
+            call("showSettingsDialog");
+            AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+            com.google.android.material.slider.Slider slider = dialog.getWindow().getDecorView().findViewWithTag("turn_time_selector");
+            assertTrue(slider.isEnabled()); slider.setValue(index);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+            assertEquals(index == 4 ? 0L : 180000L, field(activity, "turnDurationMillis"));
+            assertEquals(position, game().getPiece(0, 0).position);
+            assertEquals(index == 4 ? 0L : 180000L, field(activity, "remainingTurnMillis"));
+        }
+    }
+
+    @Test public void restartRetainsAppearanceRulesAndTimeButClearsBoardAndUndo() {
+        settings(120000L);
+        game().setCaptureBonusStacks(true);
+        int[] colors = ((int[]) field(activity, "teamColors")).clone();
+        int[] shapes = ((int[]) field(activity, "teamShapes")).clone();
+        call("handleYutInput", 2); call("selectPiece", 0, 0); call("commitSelectedMove"); settle();
+        call("requestNewGame");
+        shadowOf(Looper.getMainLooper()).idle();
+        AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertFalse(dialog.getButton(AlertDialog.BUTTON_NEUTRAL).isEnabled());
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3));
+        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).performClick(); settle();
+        assertEquals(4, game().getTeamCount());
+        assertEquals(0, game().getCurrentTeam());
+        assertEquals(BoardPath.START_NODE, game().getPiece(0, 0).position);
+        assertTrue(game().getPendingResults().isEmpty()); assertNull(field(activity, "moveUndoState"));
+        assertArrayEquals(colors, (int[]) field(activity, "teamColors"));
+        assertArrayEquals(shapes, (int[]) field(activity, "teamShapes"));
+        assertEquals(120000L, field(activity, "turnDurationMillis"));
+        assertTrue(game().isCaptureBonusStacks());
+        assertEquals(View.GONE, activity.findViewById(R.id.setup_panel).getVisibility());
+    }
+
+    @Test public void newGameChoiceRemembersAppearanceEvenAfterRelaunchFromSetup() {
+        int[] colors = ((int[]) field(activity, "teamColors")).clone();
+        int[] shapes = ((int[]) field(activity, "teamShapes")).clone();
+        call("requestNewGame");
+        shadowOf(Looper.getMainLooper()).idle();
+        AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3));
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(); settle();
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.setup_panel).getVisibility());
+        controller.pause().stop().destroy();
+        controller = Robolectric.buildActivity(MainActivity.class).setup().visible(); activity = controller.get(); settle();
+        activity.findViewById(R.id.btn_team_4).performClick();
+        assertArrayEquals(colors, (int[]) field(activity, "draftTeamColors"));
+        assertArrayEquals(shapes, (int[]) field(activity, "draftTeamShapes"));
+        ((AlertDialog) field(activity, "teamAppearanceDialog")).getButton(AlertDialog.BUTTON_POSITIVE).performClick(); settle();
+        assertArrayEquals(colors, (int[]) field(activity, "teamColors"));
+    }
+
     private void assertExtraThrowHint() {
         android.widget.TextView hint = (android.widget.TextView) field(activity, "rollHint");
         assertEquals(activity.getString(R.string.extra_rolls, 1), hint.getText().toString());
