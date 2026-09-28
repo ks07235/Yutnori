@@ -38,6 +38,7 @@ GitHub 푸시 완료
 | 2026-09-27 22:40:46 | ks07235 / 기존 로컬 | 1.5.1 / 55 | UI·문서 | 가로 수직 여백 축소, 오른쪽 공통 패널, 개발 인수인계 문서 | 테스트 119+35개, lint 오류 0, APK 검증 | `feat/team-piece-customization-1.4.0` / [ee41722](https://github.com/ks07235/Yutnori/commit/ee417226edc84b0ce7db47727a41ebe0c632c56c) |
 | 2026-09-27 23:04:25 | ks07235 / 기존 로컬 | 1.5.2 / 56 | 기능·UI | 패널 내부 간격, 게임 중 시간 변경, 다시하기 분기, 꾸미기 기억 | 테스트 122+35개, lint 오류 0, APK 검증 | `feat/team-piece-customization-1.4.0` / [f186870](https://github.com/ks07235/Yutnori/commit/f1868706b4de955a02909050d88077fbcf948f41) |
 | 2026-09-28 08:30:22 | Codex / `C:\yutnori` | 1.5.3 / 57 | 안정화·배포 | 좌우 카메라 홀, 내비게이션 영역, 170% 글씨 배율 최종 보강 | 테스트 124+35개, lint 오류 0, 서명 AAB·Drive 복사 검증 | `main` / [0c6bfea](https://github.com/ks07235/Yutnori/commit/0c6bfea710c13e4c6bebd741bee8e0031aef5a8f) |
+| 2026-09-28 10:08:28 | Codex / `C:\yutnori` | 1.5.3 / 57 | 문서·협업 | 모든 로컬의 푸시 전 개발현황 갱신과 푸시 후 사용자 보고를 필수 규칙·고정 양식으로 지정 | 문서 변경만 수행, 앱 산출물 없음 | `main` / [8c41e86](https://github.com/ks07235/Yutnori/commit/8c41e864dcd942bd7466b72ad84dfbf8f738a1c8) |
 
 ## 현재 진행 중: 1.5.4 후보 (아직 미푸시)
 
