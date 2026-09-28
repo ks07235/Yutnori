@@ -575,6 +575,16 @@ public class BoardUxTest {
         assertTrue(bounds(activity.findViewById(R.id.top_panel)).contains(bounds(activity.findViewById(R.id.text_timer))));
         assertTrue(bounds(activity.findViewById(R.id.top_panel)).contains(bounds(activity.findViewById(R.id.btn_time_stop))));
         assertTrue(activity.findViewById(R.id.board_container).getWidth() >= 248);
+        ViewGroup[] progressRows = (ViewGroup[]) field(activity, "teamProgressRows");
+        for (int team = 0; team < 4; team++) {
+            View row = (View) progressRows[team].getParent();
+            assertEquals(34, row.getHeight());
+            if (team > 0) {
+                assertEquals(6, ((ViewGroup.MarginLayoutParams) row.getLayoutParams()).topMargin);
+            }
+        }
+        View[][] waitingSpots = (View[][]) field(activity, "waitSpots");
+        assertEquals(6, ((ViewGroup.MarginLayoutParams) waitingSpots[0][1].getLayoutParams()).topMargin);
         int[] left = {R.id.btn_do, R.id.btn_gae, R.id.btn_geol};
         int[] right = {R.id.btn_yut, R.id.btn_mo, R.id.btn_bdo};
         for (int i = 0; i < 3; i++) {
@@ -584,6 +594,10 @@ public class BoardUxTest {
         }
         call("handleYutInput", 4); settle();
         assertExtraThrowHint();
+        ViewGroup results = activity.findViewById(R.id.layout_results);
+        android.widget.TextView result = (android.widget.TextView) results.getChildAt(0);
+        assertEquals(18, result.getAutoSizeMaxTextSize());
+        assertTrue(result.getTextSize() >= 14f);
         screenshot("v150-landscape");
     }
 

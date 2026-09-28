@@ -50,7 +50,7 @@ public class TeamAppearanceTest {
     }
 
     @Test public void customSelectionsSurviveRoundTripWithoutAliasing() {
-        int[] colors = {5, 6, 4, 9};
+        int[] colors = {5, 6, 4, 8};
         int[] shapes = {4, 5, 1, 2};
         assertArrayEquals(colors, TeamAppearance.restoreColors(colors, 4));
         assertArrayEquals(shapes, TeamAppearance.restoreShapes(shapes));
@@ -66,11 +66,12 @@ public class TeamAppearanceTest {
         assertArrayEquals(new int[]{5, 0, 0, 0}, TeamAppearance.restoreShapes(new int[]{5, -1, 99}));
     }
 
-    @Test public void paletteAndShapesOfferTenColorsAndSixShapes() {
-        assertEquals(10, TeamAppearance.colorCount());
+    @Test public void paletteAndShapesOfferNineColorsWithoutOrangeAndSixShapes() {
+        assertEquals(9, TeamAppearance.colorCount());
         assertEquals(6, TeamAppearance.SHAPE_COUNT);
         for (int color = 0; color < TeamAppearance.colorCount(); color++) {
             assertTrue(TeamAppearance.isColor(color));
+            assertNotEquals(0xFFF28C28, TeamAppearance.fill(color));
             for (int other = 0; other < color; other++) {
                 assertNotEquals(TeamAppearance.fill(other), TeamAppearance.fill(color));
             }

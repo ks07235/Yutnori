@@ -769,6 +769,7 @@ public class MainActivity extends AppCompatActivity {
         finishedSummaryLayout.removeAllViews();
         finishedSummaryLayout.setOrientation(LinearLayout.VERTICAL);
         boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        finishedSummaryLayout.setGravity(landscape ? Gravity.CENTER_VERTICAL : Gravity.TOP);
         waitingArea.removeAllViews();
         waitingArea.setOrientation(LinearLayout.VERTICAL);
         for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) teamProgressRows[team] = null;
@@ -777,9 +778,11 @@ public class MainActivity extends AppCompatActivity {
             if (landscape || team % 2 == 0) {
                 row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
-                finishedSummaryLayout.addView(row, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(landscape ? landscapeTeamRowHeight() : 30)));
+                        dp(landscape ? landscapeTeamRowHeight() : 30));
+                if (landscape && team > 0) rowParams.topMargin = dp(landscapeSpacing());
+                finishedSummaryLayout.addView(row, rowParams);
             }
             createFinishedTeamSummary(team, row);
         }
@@ -876,7 +879,7 @@ public class MainActivity extends AppCompatActivity {
             spot.setOnClickListener(v -> selectPiece(team, pieceId));
             LinearLayout.LayoutParams spotParams = new LinearLayout.LayoutParams(dp(48), dp(48));
             int spotMargin = 0;
-            spotParams.setMargins(spotMargin, vertical ? dp(landscapeSpacing()) : 0, spotMargin, 0);
+            spotParams.setMargins(spotMargin, vertical && id > 0 ? dp(landscapeSpacing()) : 0, spotMargin, 0);
             spots.addView(spot, spotParams);
             waitSpots[team][id] = spot;
         }
@@ -1116,18 +1119,18 @@ public class MainActivity extends AppCompatActivity {
 
         for (int i = 0; i < moveChoices.size(); i++) {
             YutGameEngine.MoveChoice choice = moveChoices.get(i);
+            boolean vertical = usesLandscapeControls();
             Button button = new Button(this);
             button.setText(choice.label);
             button.setAllCaps(false);
             button.setTextColor(getResources().getColor(R.color.text_primary));
-            button.setTextSize(moveChoices.size() > 1 ? 13 : 15);
+            button.setTextSize(vertical ? 18 : moveChoices.size() > 1 ? 13 : 15);
             button.setTypeface(Typeface.DEFAULT_BOLD);
             button.setBackgroundResource(R.drawable.shape_result_button);
             button.setBackgroundTintList(null);
             button.setStateListAnimator(null);
             button.setSelected(choice.selectionOrder > 0);
             button.setEnabled(!isAnimatingMove);
-            boolean vertical = usesLandscapeControls();
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     vertical ? ViewGroup.LayoutParams.MATCH_PARENT : dp(moveChoices.size() > 1 ? 86 : 72), dp(vertical ? 48 : 44));
             params.setMargins(0, 0, vertical ? 0 : dp(6), vertical ? dp(4) : 0);
@@ -1135,7 +1138,7 @@ public class MainActivity extends AppCompatActivity {
                 button.setMinWidth(0);
                 button.setPadding(dp(2), 0, dp(2), 0);
                 button.setMaxLines(2);
-                TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(button, 10, 14, 1, TypedValue.COMPLEX_UNIT_SP);
+                TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(button, 14, 18, 1, TypedValue.COMPLEX_UNIT_SP);
             }
             button.setLayoutParams(params);
 
@@ -3782,12 +3785,15 @@ public class MainActivity extends AppCompatActivity {
 
     private int landscapeSpacing() {
         int height = getResources().getConfiguration().screenHeightDp;
-        return height <= 320 ? 2 : height >= 400 ? 6 : 4;
+        return height <= 320 ? 3 : height >= 400 ? 8 : 6;
     }
 
     private int landscapeTeamRowHeight() {
         int height = getResources().getConfiguration().screenHeightDp;
-        return turnDurationMillis <= 0L ? (height >= 400 ? 44 : 40) : (height >= 400 ? 36 : 30);
+        if (turnDurationMillis <= 0L) {
+            return height <= 320 ? 40 : height >= 400 ? 52 : 46;
+        }
+        return height <= 320 ? 26 : height >= 400 ? 36 : 34;
     }
 
     private boolean usesVerticalWaitingTray() {
@@ -3832,7 +3838,7 @@ public class MainActivity extends AppCompatActivity {
                 View row = findViewById(id);
                 removeFromParent(row);
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(48));
-                params.topMargin = dp(4);
+                params.topMargin = dp(landscapeSpacing());
                 unlimitedFooter.addView(row, params);
             }
             LinearLayout actions = findViewById(R.id.results_row);
@@ -3893,6 +3899,7 @@ public class MainActivity extends AppCompatActivity {
             constraints.setVisibility(id, View.VISIBLE);
         }
         boolean compact = usesCompactWaitingTray();
+        int panelGap = dp(landscapeSpacing());
         // Account for the frame's end inset without stealing width from the board.
         constraints.constrainWidth(R.id.unlimited_rolls, dp(compact ? 110 : 146));
         constraints.constrainWidth(R.id.unlimited_waiting, dp(compact ? 48 : 60));
@@ -3901,8 +3908,8 @@ public class MainActivity extends AppCompatActivity {
         constraints.connect(R.id.unlimited_waiting, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.START, dp(4));
         constraints.connect(R.id.landscape_results, ConstraintSet.END, R.id.unlimited_waiting, ConstraintSet.START, dp(4));
         for (int id : new int[]{R.id.unlimited_rolls, R.id.unlimited_waiting, R.id.landscape_results}) {
-            constraints.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, dp(6));
-            constraints.connect(id, ConstraintSet.BOTTOM, R.id.unlimited_footer, ConstraintSet.TOP, dp(4));
+            constraints.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, panelGap);
+            constraints.connect(id, ConstraintSet.BOTTOM, R.id.unlimited_footer, ConstraintSet.TOP, panelGap);
         }
         constraints.connect(R.id.unlimited_footer, ConstraintSet.START, R.id.landscape_results, ConstraintSet.START);
         constraints.connect(R.id.unlimited_footer, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.END);

@@ -16,10 +16,9 @@ final class TeamAppearanceDialog {
     private static final int[] COLOR_NAMES = {
             R.string.piece_color_red, R.string.piece_color_blue, R.string.piece_color_purple,
             R.string.piece_color_green, R.string.piece_color_forsythia, R.string.piece_color_white,
-            R.string.piece_color_black, R.string.piece_color_orange, R.string.piece_color_pink,
-            R.string.piece_color_teal
+            R.string.piece_color_black, R.string.piece_color_pink, R.string.piece_color_teal
     };
-    private static final int[] COLOR_ORDER = {4, 0, 1, 2, 3, 5, 6, 7, 8, 9};
+    private static final int[] COLOR_ORDER = {4, 0, 1, 2, 3, 5, 6, 7, 8};
     private static final int[] SHAPE_NAMES = {
             R.string.piece_shape_circle, R.string.piece_shape_square, R.string.piece_shape_diamond,
             R.string.piece_shape_triangle, R.string.piece_shape_star, R.string.piece_shape_hexagon

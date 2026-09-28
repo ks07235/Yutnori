@@ -12,23 +12,23 @@ final class TeamAppearance {
     static final int HEXAGON = 5;
     static final int SHAPE_COUNT = 6;
 
-    // New entries must be appended: saved games store the palette index.
+    // Saved games store the current palette index.
     private static final int[] FILLS = {
             0xFFD94841, 0xFF2364D2, 0xFF8357D6, 0xFF2F9E62, 0xFFFFD43B,
-            0xFFFFFFFF, 0xFF202124, 0xFFF28C28, 0xFFE75491, 0xFF008C95
+            0xFFFFFFFF, 0xFF202124, 0xFFE75491, 0xFF008C95
     };
     private static final int[] HIGHLIGHTS = {
             0xFFFF7A72, 0xFF4D96FF, 0xFFAC86EE, 0xFF66C98B, 0xFFFFE878,
-            0xFFFFFFFF, 0xFF50545B, 0xFFFFB763, 0xFFFF91BC, 0xFF49C3C5
+            0xFFFFFFFF, 0xFF50545B, 0xFFFF91BC, 0xFF49C3C5
     };
     private static final int[] INKS = {
             0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF172B21, 0xFF493800,
-            0xFF25323B, 0xFFFFFFFF, 0xFF422500, 0xFF391024, 0xFF092E32
+            0xFF25323B, 0xFFFFFFFF, 0xFF391024, 0xFF092E32
     };
     // Readable on the app's light panels, including yellow and white teams.
     private static final int[] LABELS = {
             0xFFA92F2A, 0xFF1C50AA, 0xFF6740AA, 0xFF1E7044, 0xFF795B00,
-            0xFF455A64, 0xFF202124, 0xFF975000, 0xFFA32960, 0xFF00666E
+            0xFF455A64, 0xFF202124, 0xFFA32960, 0xFF00666E
     };
 
     private TeamAppearance() { }
