@@ -45,7 +45,7 @@ GitHub 푸시 완료
 
 ## 현재 진행 중
 
-- 2026-10-06 / Codex / `C:\yutnori` / 1.5.12 · 66: [구조 분리 설계](refactoring-design-66.md) 완료. 기록 표시 → 현황판 → 화면 배치 → 말/애니메이션 → 시간 계산 → 측정 기반 최적화 순서, 상태 소유권·회전 취소·저장 호환·단계별 검증 기준을 정했다. 다음 구현은 A(기록 표시)부터 진행한다. 이번 작업은 문서만 변경했으며 버전업·APK/AAB 생성·앱 코드 수정은 없다.
+- 2026-10-06 / Codex / `C:\yutnori` / 1.5.12 · 66: 리팩토링 A·B(기록 표시·현황판) 구현 완료. `HistoryPresenter`와 `TeamStatusPanel`로 표시 책임을 분리했다. 테스트 138개 통과, lint 오류 0·경고 44, debug APK 컴파일 성공. 재생성 화면 PNG 25장의 SHA-256이 기준과 동일하다. 버전업과 새 release APK/AAB 생성은 없다. 다음은 C(화면 배치)이며 [진행과 검증](refactoring-progress-66.md)을 먼저 읽는다. 작업 브랜치 `refactor/history-status-build66`.
 - 기준 소스는 `baseline/build66-before-refactor` / `9eae39f`, 기준 기록 문서는 `6710a46`, 태그는 `baseline-build66`으로 GitHub 반영 확인 완료. [기준 문서](refactoring-baseline-66.md)의 테스트 130개·lint 오류 0/경고 44는 이전 기준 검증 결과다. 설계 단계에서 테스트를 재실행한 것으로 해석하지 않는다.
 
 ## 이전 로컬 작업 기록

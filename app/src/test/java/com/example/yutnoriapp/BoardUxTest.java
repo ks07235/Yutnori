@@ -50,6 +50,32 @@ public class BoardUxTest {
     @After public void close() { if (controller != null) controller.pause().stop().destroy(); }
 
     @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
+    public void obsoleteStatusAndHistoryCallbacksCannotChangeTheReboundScreen() {
+        Object oldPanel = field(activity, "teamStatusPanel");
+        ViewGroup[] oldRows = (ViewGroup[]) field(oldPanel, "teamProgressRows");
+        View oldRow = (View) oldRows[0].getParent();
+        Runnable oldResize = (Runnable) field(oldPanel, "resizeTask");
+        ViewGroup oldRail = activity.findViewById(R.id.action_log_rail);
+        View oldHistoryItem = oldRail.getChildAt(0);
+        YutGameEngine.SavedState before = game().saveState();
+        rotate("ko-rKR-w360dp-h740dp-port-mdpi");
+        rotate("ko-rKR-w640dp-h360dp-land-mdpi");
+        assertNotSame(oldPanel, field(activity, "teamStatusPanel"));
+        ViewGroup.LayoutParams params = oldRow.getLayoutParams();
+        params.height = 77;
+        oldRow.setLayoutParams(params);
+        oldResize.run();
+        assertEquals(77, oldRow.getLayoutParams().height);
+        int holds = (Integer) field(activity, "timerDialogHoldCount");
+        oldHistoryItem.performClick();
+        oldRail.performClick();
+        assertEquals(holds, field(activity, "timerDialogHoldCount"));
+        assertArrayEquals(before.piecePositions, game().saveState().piecePositions);
+        assertEquals(before.currentTeam, game().getCurrentTeam());
+        assertInfoVisible();
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
     public void smallerTeamGroupsAreCenteredAndTurnPieceTracksAppearance() throws Exception {
         for (int teams : new int[]{2, 3, 4}) {
             call("startGame", teams);
@@ -157,7 +183,7 @@ public class BoardUxTest {
         assertTrue(game.getPiece(0, 0).isFinished);
         assertTrue(game.getPiece(0, 1).isFinished);
         assertEquals(View.GONE, finish.getVisibility());
-        PieceStackView[][] icons = (PieceStackView[][]) field(activity, "teamProgressPieces");
+        PieceStackView[][] icons = (PieceStackView[][]) field(field(activity, "teamStatusPanel"), "teamProgressPieces");
         assertEquals(true, field(icons[0][0], "finishedIndicator"));
         assertEquals(true, field(icons[0][1], "finishedIndicator"));
     }
@@ -222,7 +248,7 @@ public class BoardUxTest {
         activity = controller.get();
         settle();
         assertInfoVisible();
-        PieceStackView[][] icons = (PieceStackView[][]) field(activity, "teamProgressPieces");
+        PieceStackView[][] icons = (PieceStackView[][]) field(field(activity, "teamStatusPanel"), "teamProgressPieces");
         assertEquals(true, field(icons[3][2], "finishedIndicator"));
         assertEquals(false, field(icons[3][3], "finishedIndicator"));
     }
@@ -230,7 +256,7 @@ public class BoardUxTest {
     private void assertInfoVisible() {
         assertEquals(View.VISIBLE, activity.findViewById(R.id.top_panel).getVisibility());
         assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_info).getVisibility());
-        ViewGroup[] rows = (ViewGroup[]) field(activity, "teamProgressRows");
+        ViewGroup[] rows = (ViewGroup[]) field(field(activity, "teamStatusPanel"), "teamProgressRows");
         Rect screen = bounds(activity.findViewById(R.id.root_layout));
         Rect panel = bounds(activity.findViewById(R.id.top_panel));
         for (int team = 0; team < 4; team++) {
@@ -578,7 +604,7 @@ public class BoardUxTest {
         call("undoLastAction"); settle();
         assertFalse(game().getPiece(0, 0).isFinished);
         assertEquals(15, game().getPiece(0, 0).position);
-        PieceStackView[][] icons = (PieceStackView[][]) field(activity, "teamProgressPieces");
+        PieceStackView[][] icons = (PieceStackView[][]) field(field(activity, "teamStatusPanel"), "teamProgressPieces");
         assertEquals(false, field(icons[0][0], "finishedIndicator"));
         call("undoLastAction"); settle();
         assertTrue(game().getPendingResults().isEmpty());
@@ -611,7 +637,7 @@ public class BoardUxTest {
         }
         call("updateFinishedSummary");
         settle();
-        PieceStackView[][] icons = (PieceStackView[][]) field(activity, "teamProgressPieces");
+        PieceStackView[][] icons = (PieceStackView[][]) field(field(activity, "teamStatusPanel"), "teamProgressPieces");
         for (int team = 0; team < 4; team++) for (int piece = 0; piece < 4; piece++) {
             assertEquals(piece < counts[team], field(icons[team][piece], "finishedIndicator"));
         }
@@ -648,7 +674,7 @@ public class BoardUxTest {
         assertTrue(bounds(activity.findViewById(R.id.top_panel)).contains(bounds(activity.findViewById(R.id.text_timer))));
         assertTrue(bounds(activity.findViewById(R.id.top_panel)).contains(bounds(activity.findViewById(R.id.btn_time_stop))));
         assertTrue(activity.findViewById(R.id.board_container).getWidth() >= 248);
-        ViewGroup[] progressRows = (ViewGroup[]) field(activity, "teamProgressRows");
+        ViewGroup[] progressRows = (ViewGroup[]) field(field(activity, "teamStatusPanel"), "teamProgressRows");
         for (int team = 0; team < 4; team++) {
             View row = (View) progressRows[team].getParent();
             assertTrue(row.getHeight() >= 26 && row.getHeight() <= 40);

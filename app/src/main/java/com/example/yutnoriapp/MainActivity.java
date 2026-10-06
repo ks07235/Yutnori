@@ -64,8 +64,8 @@ public class MainActivity extends AppCompatActivity {
     private AppUpdateChecker appUpdateChecker;
     private PieceStackView[][] pieceViews;
     private FrameLayout[][] waitSpots;
-    private LinearLayout[] teamProgressRows;
-    private PieceStackView[][] teamProgressPieces;
+    private HistoryPresenter historyPresenter;
+    private TeamStatusPanel teamStatusPanel;
     private TextView finishDestination;
     private PieceStackView finishAnimationView;
     private LinearLayout.LayoutParams timedEndTurnParams;
@@ -101,7 +101,6 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout actionLogRail;
     private TextView btnTimeStop;
     private LinearLayout resultLayout;
-    private LinearLayout finishedSummaryLayout;
     private LinearLayout waitingArea;
     private View setupPanel;
     private final ArrayList<View> previewViews = new ArrayList<>();
@@ -204,6 +203,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindViewsAndActions() {
+        disposeScreenPresenters();
         layoutGeneration++;
         boardLayoutRefreshGeneration++;
         movePreviewGeneration++;
@@ -213,11 +213,8 @@ public class MainActivity extends AppCompatActivity {
         textTimer = findViewById(R.id.text_timer);
         textSetupRuleSummary = findViewById(R.id.text_setup_rule_summary);
         actionLogRail = findViewById(R.id.action_log_rail);
-        if (actionLogRail != null) {
-            actionLogRail.setOnClickListener(v -> showTurnLogDialog());
-            actionLogRail.setClickable(true);
-            actionLogRail.setFocusable(true);
-        }
+        historyPresenter = new HistoryPresenter(this, actionLogRail, game,
+                this::showTurnLogDialog, () -> showTurnLogEntryDialog(0));
         btnTimeStop = findViewById(R.id.btn_time_stop);
         topPanel = findViewById(R.id.top_panel);
         boardContainer = findViewById(R.id.board_container);
@@ -228,20 +225,14 @@ public class MainActivity extends AppCompatActivity {
         btnToggleInfo = findViewById(R.id.btn_toggle_info);
         btnToggleControls = findViewById(R.id.btn_toggle_controls);
         resultLayout = findViewById(R.id.layout_results);
-        finishedSummaryLayout = findViewById(R.id.layout_finished_summary);
-        View summaryViewport = findViewById(R.id.finished_summary_scroll);
-        if (summaryViewport != null) {
-            summaryViewport.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> {
-                if (b - t != oldB - oldT) v.post(this::resizeLandscapeSummaryRows);
-            });
-        }
+        teamStatusPanel = new TeamStatusPanel(this, findViewById(R.id.layout_finished_summary),
+                findViewById(R.id.finished_summary_scroll), findViewById(R.id.current_team_piece),
+                findViewById(R.id.text_title), game, this::landscapeSpacing, () -> turnDurationMillis);
         waitingArea = findViewById(R.id.waiting_area);
         setupPanel = findViewById(R.id.setup_panel);
 
         pieceViews = new PieceStackView[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
         waitSpots = new FrameLayout[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
-        teamProgressRows = new LinearLayout[YutGameEngine.MAX_TEAM_COUNT];
-        teamProgressPieces = new PieceStackView[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
         createFinishDestination();
 
         createPieceViews();
@@ -348,12 +339,18 @@ public class MainActivity extends AppCompatActivity {
             teamAppearanceDialog = null;
         }
         cancelMovePresentation(false);
+        disposeScreenPresenters();
         timerHandler.removeCallbacks(timerTick);
         timerHandler.removeCallbacks(updateCheckRunnable);
         if (feedback != null) {
             feedback.release();
         }
         super.onDestroy();
+    }
+
+    private void disposeScreenPresenters() {
+        if (historyPresenter != null) historyPresenter.dispose();
+        if (teamStatusPanel != null) teamStatusPanel.dispose();
     }
 
     private void createPieceViews() {
@@ -605,7 +602,7 @@ public class MainActivity extends AppCompatActivity {
         clearSelectedPiece();
         clearMovePreviews();
         resultLayout.removeAllViews();
-        finishedSummaryLayout.removeAllViews();
+        teamStatusPanel.clear();
         waitingArea.removeAllViews();
         removeAllPiecesFromScreen();
         topPanel.setVisibility(View.GONE);
@@ -814,80 +811,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void buildTeamAreas() {
-        finishedSummaryLayout.removeAllViews();
-        finishedSummaryLayout.setOrientation(LinearLayout.VERTICAL);
-        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-        finishedSummaryLayout.setGravity(landscape ? Gravity.CENTER_VERTICAL : Gravity.TOP);
         waitingArea.removeAllViews();
         waitingArea.setOrientation(LinearLayout.VERTICAL);
-        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) teamProgressRows[team] = null;
-        LinearLayout row = null;
-        for (int team = 0; team < game.getTeamCount(); team++) {
-            if (landscape || team % 2 == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(landscape ? landscapeTeamRowHeight() : 30));
-                if (landscape && team > 0) rowParams.topMargin = dp(landscapeSpacing());
-                finishedSummaryLayout.addView(row, rowParams);
-            }
-            createFinishedTeamSummary(team, row);
-        }
-        updateFinishedSummary();
+        teamStatusPanel.rebuild(teamColors, teamShapes, usesCompactWaitingTray());
         rebuildCurrentWaitingArea();
     }
 
-    private void createFinishedTeamSummary(int team, LinearLayout parent) {
-        LinearLayout summary = new LinearLayout(this);
-        summary.setOrientation(LinearLayout.HORIZONTAL);
-        summary.setGravity(Gravity.CENTER_VERTICAL);
-        summary.setPadding(dp(3), dp(1), dp(3), dp(1));
-        summary.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
-        teamProgressRows[team] = summary;
-        parent.addView(summary, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
-        TextView label = new TextView(this);
-        label.setText(teamName(team));
-        label.setTextColor(getTeamColor(team));
-        label.setTypeface(Typeface.DEFAULT_BOLD);
-        label.setMaxLines(1);
-        label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(label, 9, 12, 1, TypedValue.COMPLEX_UNIT_SP);
-        summary.addView(label, new LinearLayout.LayoutParams(
-                dp(usesLandscapeControls() && usesCompactWaitingTray() ? 28 : 38), LinearLayout.LayoutParams.MATCH_PARENT));
-        for (int piece = 0; piece < YutGameEngine.PIECE_COUNT; piece++) {
-            PieceStackView icon = new PieceStackView(this);
-            icon.configureAppearance(teamColors[team], teamShapes[team], piece + 1);
-            icon.setFinishedIndicator(false);
-            icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            summary.addView(icon, new LinearLayout.LayoutParams(0, dp(26), 1f));
-            teamProgressPieces[team][piece] = icon;
-        }
-    }
-
     private void updateFinishedSummary() {
-        if (teamProgressRows == null) return;
-        int current = game.getCurrentTeam();
-        PieceStackView currentPiece = findViewById(R.id.current_team_piece);
-        currentPiece.configureAppearance(teamColors[current], teamShapes[current], current + 1);
-        currentPiece.setFinishedIndicator(false);
-        TextView heading = findViewById(R.id.text_title);
-        heading.setText(getString(R.string.current_turn_heading, teamName(current)));
-        heading.setTextColor(getTeamColor(current));
-        for (int team = 0; team < game.getTeamCount(); team++) {
-            LinearLayout summary = teamProgressRows[team];
-            if (summary == null) continue;
-            int finishedCount = 0;
-            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                boolean finished = game.getPiece(team, id).isFinished;
-                if (finished) finishedCount++;
-                teamProgressPieces[team][id].setFinishedIndicator(finished);
-            }
-            summary.setBackgroundColor(team == game.getCurrentTeam()
-                    ? getResources().getColor(R.color.accent_gold_soft) : Color.TRANSPARENT);
-            summary.setContentDescription(getString(R.string.finished_summary_description,
-                    teamName(team), finishedCount, YutGameEngine.PIECE_COUNT));
-        }
+        teamStatusPanel.render(teamColors, teamShapes);
     }
 
     private void createWaitingTeamRow(int team) {
@@ -2950,138 +2881,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateActionLogRail() {
-        if (actionLogRail == null) {
-            return;
-        }
-        actionLogRail.removeAllViews();
-
-        boolean hasEntry = !turnLog.isEmpty();
-        ImageView item = createActionLogItem(
-                hasEntry ? getActionLogIconRes(turnLog.get(0)) : R.drawable.ic_log_history,
-                hasEntry ? getActionLogColor(turnLog.get(0)) : getResources().getColor(R.color.text_secondary));
-        item.setContentDescription(hasEntry ? turnLog.get(0) : getString(R.string.history_none));
-        item.setOnClickListener(v -> {
-            if (hasEntry) {
-                showTurnLogEntryDialog(0);
-            } else {
-                showTurnLogDialog();
-            }
-        });
-        actionLogRail.addView(item);
-
-        TextView label = new TextView(this);
-        label.setText(R.string.history);
-        label.setTextColor(getResources().getColor(R.color.text_primary));
-        label.setTypeface(Typeface.DEFAULT_BOLD);
-        label.setGravity(Gravity.CENTER);
-        label.setIncludeFontPadding(false);
-        label.setMaxLines(1);
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                label,
-                9, 11, 1,
-                TypedValue.COMPLEX_UNIT_SP);
-        if (usesLandscapeControls() || usesCompactWaitingTray()
-                || getResources().getConfiguration().fontScale >= 1.4f) {
-            label.setVisibility(View.GONE);
-            actionLogRail.setGravity(Gravity.CENTER);
-        }
-        actionLogRail.addView(label, new LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                1f));
-        actionLogRail.setContentDescription(hasEntry
-                ? getString(R.string.history_recent_description)
-                : getString(R.string.history_none));
-
-        item.setScaleX(0.86f);
-        item.setScaleY(0.86f);
-        item.setAlpha(0.55f);
-        item.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(160).start();
+        historyPresenter.render(turnLog, teamColors, usesLandscapeControls() || usesCompactWaitingTray()
+                || getResources().getConfiguration().fontScale >= 1.4f);
     }
 
-    private ImageView createActionLogItem(int iconResId, int color) {
-        ImageView item = new ImageView(this);
-        item.setBackground(createActionLogDrawable(color));
-        item.setImageResource(iconResId);
-        item.setColorFilter(Color.WHITE);
-        item.setScaleType(ImageView.ScaleType.CENTER);
-        item.setPadding(dp(7), dp(7), dp(7), dp(7));
-        item.setElevation(dp(7));
-        item.setClickable(true);
-        item.setFocusable(true);
-
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(32), dp(32));
-        params.setMargins(dp(3), 0, dp(2), 0);
-        item.setLayoutParams(params);
-        return item;
-    }
-
-    private GradientDrawable createActionLogDrawable(int color) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.OVAL);
-        drawable.setColor(color);
-        drawable.setStroke(dp(2), 0xFFFFFFFF);
-        return drawable;
-    }
-
-    private int getActionLogIconRes(String entry) {
-        if (entry == null) {
-            return R.drawable.ic_log_history;
-        }
-        if (entry.contains(getString(R.string.log_keyword_undo))) {
-            return R.drawable.ic_log_undo;
-        }
-        if (entry.contains(getString(R.string.log_keyword_victory))
-                || entry.contains(getString(R.string.log_keyword_finished))) {
-            return R.drawable.ic_log_finish;
-        }
-        if (entry.contains(getString(R.string.log_keyword_captured))) {
-            return R.drawable.ic_log_capture;
-        }
-        if (entry.contains(getString(R.string.log_keyword_moved))) {
-            return R.drawable.ic_log_move;
-        }
-        if (entry.contains(getString(R.string.log_keyword_undo))) {
-            return R.drawable.ic_log_undo;
-        }
-        if (entry.contains(getString(R.string.log_keyword_turn_end))) {
-            return R.drawable.ic_log_turn_end;
-        }
-        if (entry.contains(getString(R.string.log_keyword_new_game))) {
-            return R.drawable.ic_log_start;
-        }
-        if (entry.contains(getString(R.string.log_keyword_roll))) {
-            return R.drawable.ic_log_yut;
-        }
-        return R.drawable.ic_log_history;
-    }
-    private int getActionLogColor(String entry) {
-        if (entry != null) {
-            int teamId = parseTeamId(entry);
-            if (teamId >= 0) {
-                return getTeamColor(teamId);
-            }
-            if (entry.contains(getString(R.string.log_keyword_victory))
-                    || entry.contains(getString(R.string.log_keyword_finished))) {
-                return getResources().getColor(R.color.accent_gold);
-            }
-            if (entry.contains(getString(R.string.log_keyword_undo))) {
-                return getResources().getColor(R.color.text_secondary);
-            }
-        }
-        return getResources().getColor(R.color.text_primary);
-    }
-    private int parseTeamId(String entry) {
-        if (entry == null) {
-            return -1;
-        }
-        for (int teamId = 0; teamId < game.getTeamCount(); teamId++) {
-            if (entry.startsWith(teamName(teamId) + ":")) {
-                return teamId;
-            }
-        }
-        return -1;
-    }
     private void showTurnLogDialog() {
         beginTimerDialogHold();
         YutDialogs.showTurnLog(
@@ -3122,67 +2925,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String formatMoveLog(YutGameEngine.MoveResult result, String planText) {
-        StringBuilder builder = new StringBuilder(getString(
-                R.string.log_move_base,
-                teamName(result.teamId),
-                formatPieceIds(result.usedPieceIds),
-                planText));
-        builder.append(getString(R.string.log_location_suffix,
-                boardLocationName(result.startNode), boardLocationName(result.targetNode)));
-        if (!result.caughtPieces.isEmpty()) {
-            builder.append(getString(R.string.log_capture_suffix, result.caughtPieces.size()));
-        }
-        if (!result.finishedPieceIds.isEmpty()) {
-            builder.append(getString(R.string.log_finish_suffix, result.finishedPieceIds.size()));
-        }
-        if (result.gameWon) {
-            builder.append(getString(R.string.log_victory_suffix));
-        }
-        return builder.toString();
+        return historyPresenter.formatMove(result, planText);
     }
 
-    private String boardLocationName(int node) {
-        if (node == BoardPath.START_NODE) return getString(R.string.location_waiting);
-        if (node == BoardPath.END_NODE) return getString(R.string.location_finished);
-        int spot = game.visualSpotFor(node);
-        String[] names = getResources().getStringArray(R.array.board_spot_names);
-        return spot >= 0 && spot < names.length ? names[spot] : getString(R.string.location_board);
-    }
-    private String formatPieceIds(List<Integer> pieceIds) {
-        if (pieceIds == null || pieceIds.isEmpty()) {
-            return getString(R.string.piece_ids_fallback);
-        }
-        StringBuilder ids = new StringBuilder();
-        for (int i = 0; i < pieceIds.size(); i++) {
-            if (i > 0) {
-                ids.append(",");
-            }
-            ids.append(pieceIds.get(i) + 1);
-        }
-        return getString(R.string.piece_ids, ids.toString());
-    }
     private String buildGameOverMessage(YutGameEngine.MoveResult result) {
-        String message = getString(
-                R.string.game_over_summary,
-                teamName(result.teamId),
-                countFinishedPieces(result.teamId),
-                YutGameEngine.PIECE_COUNT,
-                turnLog.size());
-        if (!turnLog.isEmpty()) {
-            message += getString(
-                    R.string.game_over_last_actions,
-                    YutDialogs.buildTurnLogText(turnLog, Math.min(4, turnLog.size())));
-        }
-        return message;
-    }
-    private int countFinishedPieces(int teamId) {
-        int count = 0;
-        for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-            if (game.getPiece(teamId, id).isFinished) {
-                count++;
-            }
-        }
-        return count;
+        return historyPresenter.formatGameOver(result, turnLog);
     }
 
     private void loadSettings() {
@@ -3865,20 +3612,6 @@ public class MainActivity extends AppCompatActivity {
         return height <= 320 ? 3 : height >= 400 ? 8 : 6;
     }
 
-    private int landscapeTeamRowHeight() {
-        int height = getResources().getConfiguration().screenHeightDp;
-        View viewport = findViewById(R.id.finished_summary_scroll);
-        if (viewport != null && viewport.getHeight() > 0 && game != null) {
-            int teams = game.getTeamCount();
-            int available = viewport.getHeight() - dp(landscapeSpacing()) * (teams - 1);
-            return Math.max(26, Math.min(40, Math.round(available / (teams * getResources().getDisplayMetrics().density))));
-        }
-        if (turnDurationMillis <= 0L) {
-            return height <= 320 ? 40 : height >= 400 ? 52 : 46;
-        }
-        return height <= 320 ? 26 : height >= 400 ? 36 : 34;
-    }
-
     private boolean usesVerticalWaitingTray() {
         return usesLandscapeControls();
     }
@@ -4030,16 +3763,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void resizeLandscapeSummaryRows() {
-        if (!usesLandscapeControls() || game == null) return;
-        for (int i = 0; i < finishedSummaryLayout.getChildCount(); i++) {
-            View row = finishedSummaryLayout.getChildAt(i);
-            ViewGroup.LayoutParams params = row.getLayoutParams();
-            int height = dp(landscapeTeamRowHeight());
-            if (params.height != height) {
-                params.height = height;
-                row.setLayoutParams(params);
-            }
-        }
+        teamStatusPanel.resizeRows();
     }
 
     private void updateTimerLayout() {

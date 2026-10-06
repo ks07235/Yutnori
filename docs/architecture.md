@@ -1,6 +1,6 @@
 # Yutnori App Architecture
 
-빌드 66 구조 분리의 다음 작업은 [리팩토링 설계](refactoring-design-66.md)를 따른다. 아래는 현재 구현이며, 설계 문서의 새 클래스들은 아직 구현되지 않았다.
+빌드 66 구조 분리의 다음 작업은 [리팩토링 설계](refactoring-design-66.md)를 따른다. A·B(기록 표시·현황판) 구현과 검증 결과는 [진행 문서](refactoring-progress-66.md)에 기록한다. 화면 배치·판 표시·시간 계산 분리는 아직 예정 단계다.
 
 ## 핵심 규칙
 
@@ -12,6 +12,8 @@
 ## 화면 계층
 
 - `MainActivity.java`: 화면 생명주기, 입력 연결, 타이머, 말 배치와 애니메이션을 조정한다.
+- `HistoryPresenter.java`: 기록 포맷과 최근 기록 아이콘·색·표시·클릭을 담당한다. 기록 원본과 저장·다이얼로그의 시간 보류는 Activity가 관리한다.
+- `TeamStatusPanel.java`: 현황판의 현재 팀 아이콘·팀 행·완주 표시와 실측 행 높이를 담당한다. 실제 움직이는 말과 별도 View를 사용한다. 화면 교체 시 리스너와 예약 작업을 해제한다.
 - `YutDialogs.java`: 설정, 전체 기록, 게임 종료 다이얼로그를 만든다.
 - `TeamAppearanceDialog.java`: 팀 수 선택 후 팀별 말 색과 모양을 고르는 팝업을 만든다. 게임 시작을 누르기 전까지는 초안만 변경한다.
 - `TeamAppearance.java`: 저장 가능한 색·모양 ID, 추천 조합, 이전 저장 데이터 복원과 중복 색 검증을 담당한다.
