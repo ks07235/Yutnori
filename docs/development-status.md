@@ -33,6 +33,7 @@ GitHub 푸시 완료
 
 | 일시(KST) | 작업자 / 로컬 | 버전 / 빌드 | 종류 | 주요 내용 | 검증 / 산출물 | 브랜치 / 소스 기록 |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-06 14:17:09 | Codex / `C:\yutnori` | 1.5.12 / 66 | 문서·구조 설계 | 소스 분석을 바탕으로 책임 분리 A~F, 상태 소유권, 회전·애니메이션·저장 호환 규약과 회귀 검증 계획 작성. 기존 architecture의 다시하기/나가기 설명 갱신 | 문서 링크·명시 테스트 참조·diff 확인. 앱 코드 변경 및 새 테스트 실행·APK/AAB 생성 없음 | `design/refactoring-build66` / `24cbeb04c30e18bd0a71b20525f31a9ab7208181` |
 | 2026-10-06 14:10:22 | Codex / `C:\yutnori` | 1.5.12 / 66 | 소스 보존·검증 | 빌드 59~66 로컬 변경을 기준 소스로 보존, 기능 유지 계약·측정 기준 기록. 이번 단계 앱 동작 변경 없음 | 캐시 없는 테스트 130개 통과, lint 오류 0·경고 44, 기존 APK/AAB 해시 확인 | `baseline/build66-before-refactor` / `9eae39f6f97d3aceec90f8cb4dcd220daaf4c45c`, 태그 `baseline-build66` |
 | 2026-09-27 20:45:30 | ks07235 / 기존 로컬 | 1.4.4 / 52 | 기능·UI | 방향별 화면 통일, 밝은 설정 창, 새 게임 대기 3초 | 상세 내용은 아래 항목 참조 | `feat/team-piece-customization-1.4.0` / [b379fe9](https://github.com/ks07235/Yutnori/commit/b379fe9ec1ea69c841641fb0708d6e646c5cd5a9) |
 | 2026-09-27 21:55:06 | ks07235 / 기존 로컬 | 1.5.0 / 54 | 기능·UI | 잡기 규칙 선택, 랜덤 꾸미기, 역방향 취소, 화면·백업 기능 개선 | 테스트 117개, 에뮬레이터·lint·APK 검증 | `feat/team-piece-customization-1.4.0` / [c69e2eb](https://github.com/ks07235/Yutnori/commit/c69e2eb9b6c8ae8fc08aa79c8f949830ca5c13b7) |
