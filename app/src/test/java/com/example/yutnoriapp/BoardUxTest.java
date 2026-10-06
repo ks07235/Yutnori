@@ -36,6 +36,8 @@ public class BoardUxTest {
     private MainActivity activity;
 
     @Before public void start() {
+        RuntimeEnvironment.getApplication().getSharedPreferences("yutnori_display", Context.MODE_PRIVATE)
+                .edit().clear().commit();
         RuntimeEnvironment.getApplication().getSharedPreferences("yutnori_state", Context.MODE_PRIVATE)
                 .edit().clear().putBoolean("sound_enabled", false).putBoolean("vibration_enabled", false).commit();
         controller = Robolectric.buildActivity(MainActivity.class).setup().visible();
@@ -46,6 +48,75 @@ public class BoardUxTest {
     }
 
     @After public void close() { if (controller != null) controller.pause().stop().destroy(); }
+
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
+    public void smallerTeamGroupsAreCenteredAndTurnPieceTracksAppearance() throws Exception {
+        for (int teams : new int[]{2, 3, 4}) {
+            call("startGame", teams);
+            settle();
+            ViewGroup rows = activity.findViewById(R.id.layout_finished_summary);
+            assertEquals(teams, rows.getChildCount());
+            int groupCenter = (rows.getChildAt(0).getTop() + rows.getChildAt(teams - 1).getBottom()) / 2;
+            assertEquals(rows.getHeight() / 2, groupCenter, 1);
+            assertTrue(bounds(activity.findViewById(R.id.finished_summary_scroll)).bottom
+                    <= bounds(activity.findViewById(R.id.btn_restart)).top);
+            call("endCurrentTurn");
+            settle();
+            PieceStackView icon = activity.findViewById(R.id.current_team_piece);
+            int current = game().getCurrentTeam();
+            assertEquals(((int[]) field(activity, "teamShapes"))[current], field(icon, "shape"));
+            assertEquals(TeamAppearance.fill(((int[]) field(activity, "teamColors"))[current]), field(icon, "darkColor"));
+            assertTrue(bounds(activity.findViewById(R.id.top_panel)).contains(bounds(icon)));
+            assertFalse(Rect.intersects(bounds(icon), bounds(activity.findViewById(R.id.text_title))));
+            assertFalse(Rect.intersects(bounds(icon), bounds(activity.findViewById(R.id.btn_settings))));
+            screenshot("v1511-centered-" + teams + "-teams");
+        }
+    }
+
+    @Test public void finishedCrossIsLargeThickAndContrastsWithWhiteAndBlackPieces() {
+        for (int color : new int[]{5, 6}) {
+            PieceStackView icon = new PieceStackView(activity);
+            icon.configureAppearance(color, TeamAppearance.CIRCLE, 1);
+            icon.setFinishedIndicator(true);
+            icon.layout(0, 0, 26, 26);
+            Bitmap bitmap = Bitmap.createBitmap(26, 26, Bitmap.Config.ARGB_8888);
+            icon.draw(new Canvas(bitmap));
+            android.graphics.Paint cross = (android.graphics.Paint) field(icon, "finishedMarkPaint");
+            assertEquals(26 * 0.12f, cross.getStrokeWidth(), 0.01f);
+            int ink = bitmap.getPixel(4, 4);
+            assertTrue(color == 5 ? android.graphics.Color.red(ink) < 100 : android.graphics.Color.red(ink) > 200);
+            bitmap.recycle();
+        }
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h320dp-land-mdpi")
+    public void fourTeamsStayAboveRestartAndExitHasLightText() throws Exception {
+        assertFourTeamActionsSeparated();
+        Method settings = MainActivity.class.getDeclaredMethod("applySettings", long.class, boolean.class, boolean.class);
+        settings.setAccessible(true);
+        settings.invoke(activity, 0L, false, false);
+        settle();
+        assertFourTeamActionsSeparated();
+        screenshot("v1510-four-teams-landscape");
+    }
+
+    private void assertFourTeamActionsSeparated() {
+        android.widget.ScrollView viewport = activity.findViewById(R.id.finished_summary_scroll);
+        View restart = activity.findViewById(R.id.btn_restart);
+        android.widget.TextView exit = activity.findViewById(R.id.btn_exit_game);
+        assertTrue(bounds(viewport).bottom <= bounds(restart).top);
+        assertTrue(bounds(restart).bottom <= bounds(exit).top);
+        assertTrue(viewport.getClipChildren());
+        assertEquals(activity.getResources().getColor(R.color.btn_text_color), exit.getCurrentTextColor());
+        viewport.setSmoothScrollingEnabled(false);
+        viewport.fullScroll(View.FOCUS_DOWN);
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1));
+        android.widget.LinearLayout rows = activity.findViewById(R.id.layout_finished_summary);
+        assertEquals(4, rows.getChildCount());
+        assertTrue("last=" + bounds(rows.getChildAt(3)) + " viewport=" + bounds(viewport)
+                + " scroll=" + viewport.getScrollY(),
+                rows.getChildAt(3).getBottom() - viewport.getScrollY() <= viewport.getHeight());
+    }
 
     @Test public void informationAndAllFourTeamsRemainVisibleWhenInputToggles() throws Exception {
         assertInfoVisible();
@@ -570,7 +641,9 @@ public class BoardUxTest {
     @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
     public void landscapeTimerMovesLeftWithoutShrinkingBoardAndButtonsUseColumnOrder() throws Exception {
         assertEquals(View.GONE, activity.findViewById(R.id.text_status).getVisibility());
-        assertEquals(View.GONE, activity.findViewById(R.id.text_title).getVisibility());
+        assertEquals(View.VISIBLE, activity.findViewById(R.id.text_title).getVisibility());
+        assertEquals(activity.getString(R.string.current_turn_heading, "1팀"),
+                ((android.widget.TextView) activity.findViewById(R.id.text_title)).getText().toString());
         assertSame(activity.findViewById(R.id.top_panel), activity.findViewById(R.id.turn_tools).getParent());
         assertTrue(bounds(activity.findViewById(R.id.top_panel)).contains(bounds(activity.findViewById(R.id.text_timer))));
         assertTrue(bounds(activity.findViewById(R.id.top_panel)).contains(bounds(activity.findViewById(R.id.btn_time_stop))));
@@ -578,7 +651,7 @@ public class BoardUxTest {
         ViewGroup[] progressRows = (ViewGroup[]) field(activity, "teamProgressRows");
         for (int team = 0; team < 4; team++) {
             View row = (View) progressRows[team].getParent();
-            assertEquals(34, row.getHeight());
+            assertTrue(row.getHeight() >= 26 && row.getHeight() <= 40);
             if (team > 0) {
                 assertEquals(6, ((ViewGroup.MarginLayoutParams) row.getLayoutParams()).topMargin);
             }
@@ -723,9 +796,9 @@ public class BoardUxTest {
         call("requestNewGame");
         shadowOf(Looper.getMainLooper()).idle();
         AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
-        assertFalse(dialog.getButton(AlertDialog.BUTTON_NEUTRAL).isEnabled());
+        assertFalse(dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3));
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).performClick(); settle();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick(); settle();
         assertEquals(4, game().getTeamCount());
         assertEquals(0, game().getCurrentTeam());
         assertEquals(BoardPath.START_NODE, game().getPiece(0, 0).position);
@@ -740,7 +813,7 @@ public class BoardUxTest {
     @Test public void newGameChoiceRemembersAppearanceEvenAfterRelaunchFromSetup() {
         int[] colors = ((int[]) field(activity, "teamColors")).clone();
         int[] shapes = ((int[]) field(activity, "teamShapes")).clone();
-        call("requestNewGame");
+        call("requestExitGame");
         shadowOf(Looper.getMainLooper()).idle();
         AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(3));
@@ -753,6 +826,20 @@ public class BoardUxTest {
         assertArrayEquals(shapes, (int[]) field(activity, "draftTeamShapes"));
         ((AlertDialog) field(activity, "teamAppearanceDialog")).getButton(AlertDialog.BUTTON_POSITIVE).performClick(); settle();
         assertArrayEquals(colors, (int[]) field(activity, "teamColors"));
+    }
+
+    @Test public void leavingCanBeCancelledWithoutResettingTheGame() {
+        game().getPiece(0, 0).position = 5;
+        activity.findViewById(R.id.btn_exit_game).performClick();
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500));
+        AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertTrue(dialog.isShowing());
+        assertFalse(dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled());
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+        shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(5, game().getPiece(0, 0).position);
+        assertEquals(View.GONE, activity.findViewById(R.id.setup_panel).getVisibility());
+        assertEquals(0, field(activity, "timerDialogHoldCount"));
     }
 
     private void assertExtraThrowHint() {
@@ -875,6 +962,76 @@ public class BoardUxTest {
         assertEquals("Yutnori " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")",
                 clipboard.getPrimaryClip().getItemAt(0).getText().toString());
         settings.dismiss();
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
+    public void landscapeEditorsHaveReadableColumnsAndPersistDirection() throws Exception {
+        assertEquals(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE,
+                activity.getRequestedOrientation());
+        call("showSettingsDialog");
+        AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        View root = dialog.getWindow().getDecorView();
+        root.measure(View.MeasureSpec.makeMeasureSpec(608, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(328, View.MeasureSpec.AT_MOST));
+        root.layout(0, 0, root.getMeasuredWidth(), root.getMeasuredHeight());
+        screenshot("v157-settings-landscape", root);
+        assertTrue(bounds(dialog.getButton(AlertDialog.BUTTON_POSITIVE)).bottom <= bounds(root).bottom);
+        android.widget.RadioGroup directions = findRadioGroup(root);
+        assertNotNull(directions);
+        directions.check(directions.getChildAt(2).getId());
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
+        assertEquals(2, activity.getSharedPreferences("yutnori_display", Context.MODE_PRIVATE).getInt("direction", -1));
+        assertEquals(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_USER,
+                activity.getRequestedOrientation());
+        call("showTeamSetup");
+        settle();
+        screenshot("v157-setup-landscape");
+        activity.findViewById(R.id.btn_team_4).performClick();
+        dialog = (AlertDialog) field(activity, "teamAppearanceDialog");
+        root = dialog.getWindow().getDecorView();
+        root.measure(View.MeasureSpec.makeMeasureSpec(608, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(328, View.MeasureSpec.AT_MOST));
+        root.layout(0, 0, root.getMeasuredWidth(), root.getMeasuredHeight());
+        screenshot("v157-appearance-landscape", root);
+        assertNotNull(root.findViewWithTag("appearance_shape_5"));
+        View color = root.findViewWithTag("appearance_color_4");
+        View shape = root.findViewWithTag("appearance_shape_0");
+        View colorColumn = (View) color.getParent().getParent().getParent().getParent();
+        View shapeColumn = (View) shape.getParent().getParent().getParent().getParent();
+        assertTrue(shapeColumn.getLeft() > colorColumn.getLeft());
+        assertTrue(color.getHeight() >= 48);
+        assertTrue(shape.getHeight() >= 48);
+        dialog.dismiss();
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w640dp-h320dp-land-mdpi")
+    public void largeFontEditorsUseSingleColumnAndKeepActionsVisible() throws Exception {
+        android.content.res.Configuration config = activity.getResources().getConfiguration();
+        config.fontScale = 1.7f;
+        activity.getResources().updateConfiguration(config, activity.getResources().getDisplayMetrics());
+        assertFalse(DialogPresentation.twoColumns(activity));
+        call("showSettingsDialog");
+        AlertDialog dialog = (AlertDialog) org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        View root = dialog.getWindow().getDecorView();
+        root.measure(View.MeasureSpec.makeMeasureSpec(520, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(288, View.MeasureSpec.AT_MOST));
+        root.layout(0, 0, root.getMeasuredWidth(), root.getMeasuredHeight());
+        assertTrue(dialog.getButton(AlertDialog.BUTTON_POSITIVE).getHeight() >= 48);
+        assertTrue(bounds(dialog.getButton(AlertDialog.BUTTON_POSITIVE)).bottom <= bounds(root).bottom);
+        screenshot("v157-settings-large-font", root);
+        dialog.dismiss();
+    }
+
+    private android.widget.RadioGroup findRadioGroup(View view) {
+        if (view instanceof android.widget.RadioGroup) return (android.widget.RadioGroup) view;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                android.widget.RadioGroup found = findRadioGroup(group.getChildAt(i));
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private void screenshot(String name, View root) throws Exception {

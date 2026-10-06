@@ -168,6 +168,8 @@ public class MainActivity extends AppCompatActivity {
         stateStore = new GameStateStore(this);
         feedback = new GameFeedback(this);
         loadSettings();
+        applyScreenDirection(getSharedPreferences("yutnori_display", MODE_PRIVATE)
+                .getInt("direction", 0));
         appUpdateChecker = new AppUpdateChecker(this);
         setContentView(R.layout.activity_main);
         bindViewsAndActions();
@@ -227,6 +229,12 @@ public class MainActivity extends AppCompatActivity {
         btnToggleControls = findViewById(R.id.btn_toggle_controls);
         resultLayout = findViewById(R.id.layout_results);
         finishedSummaryLayout = findViewById(R.id.layout_finished_summary);
+        View summaryViewport = findViewById(R.id.finished_summary_scroll);
+        if (summaryViewport != null) {
+            summaryViewport.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> {
+                if (b - t != oldB - oldT) v.post(this::resizeLandscapeSummaryRows);
+            });
+        }
         waitingArea = findViewById(R.id.waiting_area);
         setupPanel = findViewById(R.id.setup_panel);
 
@@ -378,6 +386,7 @@ public class MainActivity extends AppCompatActivity {
         bindPressAction(R.id.btn_setup_rules, this::showGameRulesDialog);
         bindPressAction(R.id.btn_setup_help, this::showHowToPlayDialog);
         bindPressAction(R.id.btn_restart, this::requestNewGame);
+        bindPressAction(R.id.btn_exit_game, this::requestExitGame);
         ((TextView) findViewById(R.id.btn_restart)).setText(R.string.restart_game);
 
         setContentDescriptionIfPresent(R.id.btn_bdo, getString(R.string.yut_backdo_description));
@@ -395,6 +404,39 @@ public class MainActivity extends AppCompatActivity {
         configureTeamSetupButton(R.id.btn_team_2, R.string.team_two_detail, R.drawable.ic_teams_2);
         configureTeamSetupButton(R.id.btn_team_3, R.string.team_three_detail, R.drawable.ic_teams_3);
         configureTeamSetupButton(R.id.btn_team_4, R.string.team_four_detail, R.drawable.ic_teams_4);
+        if (DialogPresentation.twoColumns(this)) {
+            View setupContent = ((android.view.ViewGroup) setupPanel).getChildAt(0);
+            android.widget.FrameLayout.LayoutParams contentParams = new android.widget.FrameLayout.LayoutParams(
+                    dp(Math.min(720, Math.round(getResources().getConfiguration().screenWidthDp * 0.82f))),
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.Gravity.CENTER);
+            setupContent.setLayoutParams(contentParams);
+            findViewById(R.id.text_setup_hint).setVisibility(View.GONE);
+            LinearLayout choices = (LinearLayout) findViewById(R.id.btn_team_2).getParent();
+            choices.setOrientation(LinearLayout.HORIZONTAL);
+            choices.setPadding(dp(8), dp(8), dp(8), dp(8));
+            for (int id : new int[]{R.id.btn_team_2, R.id.btn_team_3, R.id.btn_team_4}) {
+                Button button = findViewById(id);
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                params.setMargins(dp(4), 0, dp(4), 0);
+                button.setMinHeight(dp(100));
+                int icon = id == R.id.btn_team_2 ? R.drawable.ic_teams_2
+                        : id == R.id.btn_team_3 ? R.drawable.ic_teams_3 : R.drawable.ic_teams_4;
+                button.setCompoundDrawablesRelativeWithIntrinsicBounds(0, icon, 0, 0);
+                button.setLayoutParams(params);
+            }
+            LinearLayout footer = findViewById(R.id.setup_footer);
+            footer.setOrientation(LinearLayout.HORIZONTAL);
+            for (int id : new int[]{R.id.btn_setup_help, R.id.btn_setup_version}) {
+                TextView button = findViewById(id);
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                params.setMargins(dp(4), dp(8), dp(4), 0);
+                button.setMinHeight(dp(48));
+                button.setLayoutParams(params);
+                button.setPadding(dp(8), dp(6), dp(8), dp(6));
+            }
+        }
         TextView versionButton = findViewById(R.id.btn_setup_version);
         if (versionButton != null) {
             versionButton.setText(getString(
@@ -418,7 +460,7 @@ public class MainActivity extends AppCompatActivity {
                 .append(detail);
         int detailStart = title.length() + 1;
         label.setSpan(
-                new RelativeSizeSpan(0.74f),
+                new RelativeSizeSpan(0.80f),
                 detailStart,
                 label.length(),
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
@@ -533,7 +575,7 @@ public class MainActivity extends AppCompatActivity {
                 R.id.btn_time_stop, R.id.btn_undo_roll,
                 R.id.btn_team_2, R.id.btn_team_3, R.id.btn_team_4
         };
-        int[] lightButtonIds = {R.id.btn_end_turn, R.id.btn_restart};
+        int[] lightButtonIds = {R.id.btn_end_turn, R.id.btn_restart, R.id.btn_exit_game};
 
         for (int id : darkButtonIds) {
             TextView button = findViewById(id);
@@ -598,8 +640,13 @@ public class MainActivity extends AppCompatActivity {
                     captureBonusStacks = game.isCaptureBonusStacks();
                     startGame(game.getTeamCount());
                 },
-                this::showTeamSetup,
                 this::endTimerDialogHold);
+    }
+
+    private void requestExitGame() {
+        if (!gameStarted) return;
+        beginTimerDialogHold();
+        YutDialogs.showExitGameConfirmation(this, this::showTeamSetup, this::endTimerDialogHold);
     }
 
     private void showSavedGameChoice() {
@@ -728,6 +775,7 @@ public class MainActivity extends AppCompatActivity {
         setControlsEnabled(!game.isGameOver());
         if (game.isGameOver()) {
             findViewById(R.id.btn_restart).setEnabled(true);
+            findViewById(R.id.btn_exit_game).setEnabled(true);
         }
         prepareEdgePanels(false);
     }
@@ -819,6 +867,13 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateFinishedSummary() {
         if (teamProgressRows == null) return;
+        int current = game.getCurrentTeam();
+        PieceStackView currentPiece = findViewById(R.id.current_team_piece);
+        currentPiece.configureAppearance(teamColors[current], teamShapes[current], current + 1);
+        currentPiece.setFinishedIndicator(false);
+        TextView heading = findViewById(R.id.text_title);
+        heading.setText(getString(R.string.current_turn_heading, teamName(current)));
+        heading.setTextColor(getTeamColor(current));
         for (int team = 0; team < game.getTeamCount(); team++) {
             LinearLayout summary = teamProgressRows[team];
             if (summary == null) continue;
@@ -1299,6 +1354,7 @@ public class MainActivity extends AppCompatActivity {
                 playFeedback(GameFeedback.WIN);
                 setControlsEnabled(false);
                 findViewById(R.id.btn_restart).setEnabled(true);
+                findViewById(R.id.btn_exit_game).setEnabled(true);
                 updateKeepScreenOn();
                 persistGameState();
                 maybeShowVictory();
@@ -2783,6 +2839,7 @@ public class MainActivity extends AppCompatActivity {
         setEnabledIfPresent(R.id.btn_yut, enabled && game.canAddRoll(4));
         setEnabledIfPresent(R.id.btn_mo, enabled && game.canAddRoll(5));
         setEnabledIfPresent(R.id.btn_restart, enabled);
+        setEnabledIfPresent(R.id.btn_exit_game, enabled);
 
         for (int i = 0; i < resultLayout.getChildCount(); i++) {
             resultLayout.getChildAt(i).setEnabled(enabled);
@@ -3137,6 +3194,14 @@ public class MainActivity extends AppCompatActivity {
         reducedMotion = settings.reducedMotion;
     }
 
+    private void applyScreenDirection(int direction) {
+        int requested = direction == 1
+                ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+                : direction == 2 ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+                : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE;
+        setRequestedOrientation(requested);
+    }
+
     private void showSettingsDialog() {
         beginTimerDialogHold();
         YutDialogs.SettingsState settingsUi = new YutDialogs.SettingsState(getTurnDurationIndex(),
@@ -3144,10 +3209,18 @@ public class MainActivity extends AppCompatActivity {
         settingsUi.gameStarted = gameStarted;
         settingsUi.captureBonusStacks = gameStarted ? game.isCaptureBonusStacks() : captureBonusStacks;
         settingsUi.reducedMotion = reducedMotion;
+        settingsUi.screenDirection = getSharedPreferences("yutnori_display", MODE_PRIVATE)
+                .getInt("direction", 0);
         YutDialogs.showSettings(
                 this,
                 settingsUi,
                 new YutDialogs.SettingsActions() {
+                    @Override
+                    public void onScreenDirection(int direction) {
+                        getSharedPreferences("yutnori_display", MODE_PRIVATE).edit()
+                                .putInt("direction", direction).apply();
+                        applyScreenDirection(direction);
+                    }
                     @Override
                     public void onApply(int turnIndex, boolean soundEnabled, boolean vibrationEnabled, boolean motion) {
                         reducedMotion = motion;
@@ -3272,7 +3345,8 @@ public class MainActivity extends AppCompatActivity {
         String[] labels = getResources().getStringArray(R.array.turn_duration_labels);
         int index = Math.max(0, Math.min(labels.length - 1, getTurnDurationIndex()));
         String summary = getString(R.string.game_rules_summary, labels[index]);
-        summary += "\n" + getString(captureBonusStacks ? R.string.capture_rule_double : R.string.capture_rule_single);
+        summary += (DialogPresentation.twoColumns(this) ? " · " : "\n")
+                + getString(captureBonusStacks ? R.string.capture_rule_double : R.string.capture_rule_single);
         textSetupRuleSummary.setText(summary);
 
         View rulesButton = findViewById(R.id.btn_setup_rules);
@@ -3578,6 +3652,9 @@ public class MainActivity extends AppCompatActivity {
         textTimer.setText(timeText);
 
         if (isTimerPaused) {
+            if (usesLandscapeControls()) {
+                textTimer.setText(timeText + "\n" + getString(R.string.timer_stopped_label));
+            }
             textTimer.setTextColor(getResources().getColor(R.color.button_end_pressed));
             textTimer.setContentDescription(getString(R.string.timer_paused_description, timeText));
             btnTimeStop.setText(R.string.resume_time);
@@ -3790,6 +3867,12 @@ public class MainActivity extends AppCompatActivity {
 
     private int landscapeTeamRowHeight() {
         int height = getResources().getConfiguration().screenHeightDp;
+        View viewport = findViewById(R.id.finished_summary_scroll);
+        if (viewport != null && viewport.getHeight() > 0 && game != null) {
+            int teams = game.getTeamCount();
+            int available = viewport.getHeight() - dp(landscapeSpacing()) * (teams - 1);
+            return Math.max(26, Math.min(40, Math.round(available / (teams * getResources().getDisplayMetrics().density))));
+        }
         if (turnDurationMillis <= 0L) {
             return height <= 320 ? 40 : height >= 400 ? 52 : 46;
         }
@@ -3827,13 +3910,27 @@ public class MainActivity extends AppCompatActivity {
             landscapeResults.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
             textStatus.setVisibility(View.GONE);
-            findViewById(R.id.text_title).setVisibility(View.GONE);
+            TextView heading = findViewById(R.id.text_title);
+            heading.setVisibility(View.VISIBLE);
+            heading.setText(getString(R.string.current_turn_heading, teamName(game.getCurrentTeam())));
+            heading.setTextColor(getTeamColor(game.getCurrentTeam()));
+            heading.setMaxLines(2);
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(heading, 12, 16, 1, TypedValue.COMPLEX_UNIT_SP);
             LinearLayout tools = findViewById(R.id.turn_tools);
             removeFromParent(tools);
-            tools.setOrientation(LinearLayout.VERTICAL);
-            ((LinearLayout) topPanel).addView(tools, 1, new LinearLayout.LayoutParams(-1, dp(80)));
-            textTimer.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(40)));
-            btnTimeStop.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(36)));
+            tools.setOrientation(LinearLayout.HORIZONTAL);
+            tools.setGravity(Gravity.CENTER_VERTICAL);
+            LinearLayout.LayoutParams toolsParams = new LinearLayout.LayoutParams(-1, dp(56));
+            toolsParams.topMargin = dp(landscapeSpacing());
+            ((LinearLayout) topPanel).addView(tools, 1, toolsParams);
+            textTimer.setLayoutParams(new LinearLayout.LayoutParams(0, -1, 1f));
+            textTimer.setMaxLines(2);
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(textTimer, 12, 24, 1, TypedValue.COMPLEX_UNIT_SP);
+            LinearLayout.LayoutParams pauseParams = new LinearLayout.LayoutParams(dp(56), -1);
+            pauseParams.leftMargin = dp(4);
+            btnTimeStop.setLayoutParams(pauseParams);
+            btnTimeStop.setMaxLines(2);
+            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(btnTimeStop, 10, 12, 1, TypedValue.COMPLEX_UNIT_SP);
             for (int id : new int[]{R.id.results_row}) {
                 View row = findViewById(id);
                 removeFromParent(row);
@@ -3932,22 +4029,25 @@ public class MainActivity extends AppCompatActivity {
         constraints.applyTo(root);
     }
 
+    private void resizeLandscapeSummaryRows() {
+        if (!usesLandscapeControls() || game == null) return;
+        for (int i = 0; i < finishedSummaryLayout.getChildCount(); i++) {
+            View row = finishedSummaryLayout.getChildAt(i);
+            ViewGroup.LayoutParams params = row.getLayoutParams();
+            int height = dp(landscapeTeamRowHeight());
+            if (params.height != height) {
+                params.height = height;
+                row.setLayoutParams(params);
+            }
+        }
+    }
+
     private void updateTimerLayout() {
         updateRollHint();
         boolean timed = turnDurationMillis > 0L;
         boolean landscape = usesLandscapeControls();
         LinearLayout tools = findViewById(R.id.turn_tools);
-        if (landscape) {
-            for (int i = 0; i < finishedSummaryLayout.getChildCount(); i++) {
-                View row = finishedSummaryLayout.getChildAt(i);
-                ViewGroup.LayoutParams params = row.getLayoutParams();
-                int height = dp(landscapeTeamRowHeight());
-                if (params.height != height) {
-                    params.height = height;
-                    row.setLayoutParams(params);
-                }
-            }
-        }
+        if (landscape) resizeLandscapeSummaryRows();
         LinearLayout results = findViewById(R.id.results_row);
         View endTurn = findViewById(R.id.btn_end_turn);
         LinearLayout destination = landscape ? results : tools;

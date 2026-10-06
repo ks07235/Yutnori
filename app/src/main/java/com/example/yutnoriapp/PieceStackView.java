@@ -76,7 +76,6 @@ public final class PieceStackView extends View {
         strokePaint.setColor(border);
         haloPaint.setColor(border);
         finishedMarkPaint.setColor(TeamAppearance.ink(colorId));
-        finishedMarkPaint.setStrokeWidth(dp(2.2f));
         finishedMarkPaint.setStrokeCap(Paint.Cap.ROUND);
         configure(TeamAppearance.highlight(colorId), TeamAppearance.fill(colorId), pieceNumber);
     }
@@ -150,7 +149,8 @@ public final class PieceStackView extends View {
         }
 
         if (progressIndicator && finishedIndicator) {
-            float half = diameter * 0.18f;
+            float half = diameter * 0.36f;
+            finishedMarkPaint.setStrokeWidth(diameter * 0.12f);
             float x = getWidth() / 2f, y = getHeight() / 2f;
             canvas.drawLine(x - half, y - half, x + half, y + half, finishedMarkPaint);
             canvas.drawLine(x - half, y + half, x + half, y - half, finishedMarkPaint);

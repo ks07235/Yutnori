@@ -28,6 +28,7 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/text_setup_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/team_setup_hint_margin_top"
@@ -40,7 +41,8 @@
         <LinearLayout
             android:id="@+id/btn_setup_rules"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/team_setup_rules_height"
+            android:layout_height="wrap_content"
+            android:minHeight="@dimen/team_setup_rules_height"
             android:layout_marginTop="@dimen/team_setup_rules_margin_top"
             android:background="@drawable/shape_game_rules"
             android:clickable="true"
@@ -49,7 +51,9 @@
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="14dp"
-            android:paddingEnd="12dp">
+            android:paddingEnd="12dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp">
 
             <ImageView
                 android:layout_width="26dp"
@@ -70,21 +74,21 @@
                     android:includeFontPadding="false"
                     android:text="@string/game_rules"
                     android:textColor="@color/text_primary"
-                    android:textSize="16sp"
+                    android:textSize="17sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/text_setup_rule_summary"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="3dp"
                     android:ellipsize="end"
                     android:includeFontPadding="false"
                     android:maxLines="2"
                     android:textColor="@color/text_secondary"
-                    android:textSize="13sp"
-                    app:autoSizeMaxTextSize="13sp"
-                    app:autoSizeMinTextSize="10sp"
+                    android:textSize="14sp"
+                    app:autoSizeMaxTextSize="14sp"
+                    app:autoSizeMinTextSize="12sp"
                     app:autoSizeStepGranularity="1sp"
                     app:autoSizeTextType="uniform" />
             </LinearLayout>
@@ -127,6 +131,11 @@
                 android:text="@string/start_four_teams" />
         </LinearLayout>
 
+        <LinearLayout
+            android:id="@+id/setup_footer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
         <TextView
             android:id="@+id/btn_setup_help"
             style="@style/UtilityActionButton"
@@ -146,5 +155,6 @@
             android:contentDescription="@string/check_updates"
             android:text="@string/check_updates"
             android:textSize="13sp" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

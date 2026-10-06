@@ -36,6 +36,7 @@ final class TeamAppearanceDialog {
     private final TextView editingLabel;
     private final TextView error;
     private int selectedTeam;
+    private final boolean compact;
 
     private TeamAppearanceDialog(Context context, int teamCount, int[] colors, int[] shapes,
             LinearLayout content) {
@@ -43,17 +44,39 @@ final class TeamAppearanceDialog {
         this.teamCount = teamCount;
         this.colors = colors;
         this.shapes = shapes;
-        content.addView(label(context.getString(R.string.piece_setup_hint), false));
-        teams = section(content);
+        boolean wide = DialogPresentation.twoColumns(context);
+        compact = wide;
+        if (!wide) content.addView(label(context.getString(R.string.piece_setup_hint), false));
+        LinearLayout columns = new LinearLayout(context);
+        columns.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        content.addView(columns);
+        LinearLayout teamColumn = DialogPresentation.column(context);
+        LinearLayout editorColumn = DialogPresentation.column(context);
+        LinearLayout shapeColumn = DialogPresentation.column(context);
+        if (wide) {
+            columns.addView(teamColumn, new LinearLayout.LayoutParams(dp(context, 126),
+                    LinearLayout.LayoutParams.WRAP_CONTENT));
+            LinearLayout.LayoutParams colorsParams = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 3f);
+            colorsParams.setMargins(dp(context, 8), 0, dp(context, 8), 0);
+            columns.addView(editorColumn, colorsParams);
+            columns.addView(shapeColumn, new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 2f));
+        } else {
+            DialogPresentation.addColumn(columns, teamColumn, false);
+            DialogPresentation.addColumn(columns, editorColumn, false);
+        }
+        teams = section(teamColumn);
         editingLabel = label("", true);
-        content.addView(editingLabel);
-        palette = section(content);
-        content.addView(label(context.getString(R.string.piece_setup_shape), true));
-        shapeOptions = section(content);
+        editorColumn.addView(editingLabel);
+        palette = section(editorColumn);
+        if (!wide) editorColumn.addView(shapeColumn);
+        shapeColumn.addView(label(context.getString(R.string.piece_setup_shape), true));
+        shapeOptions = section(shapeColumn);
         error = label("", false);
         error.setTextColor(ContextCompat.getColor(context, R.color.timer_urgent));
         error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        content.addView(error);
+        editorColumn.addView(error);
         refresh();
     }
 
@@ -68,7 +91,7 @@ final class TeamAppearanceDialog {
         TeamAppearanceDialog editor = new TeamAppearanceDialog(
                 context, teamCount, draftColors, draftShapes, content);
         AlertDialog dialog = new AlertDialog.Builder(context)
-                .setTitle(R.string.piece_setup_title)
+                .setCustomTitle(DialogPresentation.title(context, R.string.piece_setup_title, editor.compact))
                 .setView(scroll)
                 .setPositiveButton(R.string.piece_setup_start, null)
                 .setNeutralButton(R.string.piece_setup_recommended, null)
@@ -76,6 +99,7 @@ final class TeamAppearanceDialog {
                 .create();
         dialog.setOnDismissListener(ignored -> onDismiss.run());
         dialog.show();
+        DialogPresentation.decorate(context, dialog, R.string.piece_setup_title);
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             if (!TeamAppearance.distinctColors(draftColors, teamCount)) return;
             dialog.dismiss();
@@ -97,11 +121,12 @@ final class TeamAppearanceDialog {
             String teamName = context.getString(R.string.piece_setup_team, team + 1);
             String description = context.getString(R.string.piece_setup_team_description,
                     teamName, context.getString(COLOR_NAMES[colors[team]]), context.getString(SHAPE_NAMES[shapes[team]]));
-            LinearLayout option = option(teamName + "\n" + context.getString(COLOR_NAMES[colors[team]]),
-                    colors[team], shapes[team], team == selectedTeam, description);
+            LinearLayout option = option(compact ? teamName
+                    : teamName + "\n" + context.getString(COLOR_NAMES[colors[team]]),
+                    colors[team], shapes[team], team == selectedTeam, description, compact);
             option.setTag("appearance_team_" + team);
             option.setOnClickListener(v -> { selectedTeam = id; refresh(); });
-            addGridCell(teams, option, team, 2);
+            addGridCell(teams, option, team, DialogPresentation.twoColumns(context) ? 1 : 2);
         }
         editingLabel.setText(context.getString(R.string.piece_setup_editing, selectedTeam + 1));
         for (int index = 0; index < COLOR_ORDER.length; index++) {
@@ -110,7 +135,7 @@ final class TeamAppearanceDialog {
             String name = context.getString(COLOR_NAMES[color]);
             String description = owner < 0 ? name
                     : context.getString(R.string.piece_setup_color_used, name, owner + 1);
-            LinearLayout option = option(name, color, shapes[selectedTeam], colors[selectedTeam] == color, description);
+            LinearLayout option = option(name, color, shapes[selectedTeam], colors[selectedTeam] == color, description, false);
             option.setTag("appearance_color_" + color);
             option.setAlpha(owner >= 0 && owner != selectedTeam ? 0.45f : 1f);
             option.setOnClickListener(v -> {
@@ -128,10 +153,10 @@ final class TeamAppearanceDialog {
         for (int shape = 0; shape < TeamAppearance.SHAPE_COUNT; shape++) {
             final int id = shape;
             String name = context.getString(SHAPE_NAMES[shape]);
-            LinearLayout option = option(name, colors[selectedTeam], shape, shapes[selectedTeam] == shape, name);
+            LinearLayout option = option(name, colors[selectedTeam], shape, shapes[selectedTeam] == shape, name, false);
             option.setTag("appearance_shape_" + shape);
             option.setOnClickListener(v -> { shapes[selectedTeam] = id; refresh(); });
-            addGridCell(shapeOptions, option, shape, 3);
+            addGridCell(shapeOptions, option, shape, compact ? 2 : 3);
         }
         error.setVisibility(View.GONE);
     }
@@ -141,18 +166,21 @@ final class TeamAppearanceDialog {
         return -1;
     }
 
-    private LinearLayout option(String name, int color, int shape, boolean selected, String description) {
+    private LinearLayout option(String name, int color, int shape, boolean selected, String description, boolean teamRow) {
         LinearLayout option = new LinearLayout(context);
-        option.setOrientation(LinearLayout.VERTICAL);
+        option.setOrientation(teamRow ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
         option.setGravity(Gravity.CENTER);
-        option.setPadding(dp(context, 3), dp(context, 6), dp(context, 3), dp(context, 6));
-        option.setMinimumHeight(dp(context, 84));
+        option.setPadding(dp(context, 3), dp(context, compact ? 2 : 6), dp(context, 3), dp(context, compact ? 2 : 6));
+        int availableHeight = context.getResources().getConfiguration().screenHeightDp;
+        int teamHeight = Math.max(48, Math.min(72, (availableHeight - 166) / teamCount));
+        int choiceHeight = Math.max(52, Math.min(76, (availableHeight - 190) / 3));
+        option.setMinimumHeight(dp(context, compact ? (teamRow ? teamHeight : choiceHeight) : 84));
         option.setClickable(true);
         option.setFocusable(true);
         option.setSelected(selected);
         option.setContentDescription(description);
         GradientDrawable background = new GradientDrawable();
-        background.setCornerRadius(dp(context, 12));
+        background.setCornerRadius(dp(context, 6));
         background.setColor(ContextCompat.getColor(context,
                 selected ? R.color.accent_gold_soft : R.color.surface_panel_soft));
         background.setStroke(dp(context, selected ? 2 : 1), ContextCompat.getColor(context,
@@ -161,10 +189,13 @@ final class TeamAppearanceDialog {
         PieceStackView preview = new PieceStackView(context);
         preview.configureAppearance(color, shape, 1);
         preview.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        option.addView(preview, new LinearLayout.LayoutParams(dp(context, 36), dp(context, 36)));
-        TextView text = label((selected ? "✓ " : "") + name, false);
+        int previewSize = compact ? (teamRow ? 38 : 32) : 40;
+        option.addView(preview, new LinearLayout.LayoutParams(dp(context, previewSize), dp(context, previewSize)));
+        TextView text = label((selected && !compact ? "✓ " : "") + name, false);
         text.setGravity(Gravity.CENTER);
-        text.setTextSize(12);
+        text.setTextSize(compact ? (teamRow ? 18 : 15) : 16);
+        if (teamRow) text.setTypeface(Typeface.DEFAULT_BOLD);
+        if (compact) text.setPadding(dp(context, 2), 0, dp(context, 2), 0);
         text.setTextColor(ContextCompat.getColor(context, R.color.text_primary));
         text.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         option.addView(text);
@@ -174,9 +205,10 @@ final class TeamAppearanceDialog {
     private TextView label(String value, boolean heading) {
         TextView text = new TextView(context);
         text.setText(value);
-        text.setTextSize(heading ? 15 : 13);
+        text.setTextSize(heading ? 17 : 15);
+        text.setLineSpacing(dp(context, 2), 1f);
         text.setTextColor(ContextCompat.getColor(context, heading ? R.color.text_primary : R.color.text_secondary));
-        text.setPadding(0, dp(context, heading ? 12 : 4), 0, dp(context, 6));
+        text.setPadding(0, dp(context, compact ? 2 : heading ? 12 : 4), 0, dp(context, compact ? 4 : 6));
         if (heading) text.setTypeface(Typeface.DEFAULT_BOLD);
         return text;
     }
@@ -198,7 +230,7 @@ final class TeamAppearanceDialog {
                 slot.setOrientation(LinearLayout.VERTICAL);
                 LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
                         LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-                params.setMargins(dp(context, 2), dp(context, 3), dp(context, 2), dp(context, 3));
+                params.setMargins(dp(context, 2), dp(context, compact ? 1 : 3), dp(context, 2), dp(context, compact ? 1 : 3));
                 row.addView(slot, params);
             }
         }

@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="exit_game">Leave game</string>
+    <string name="exit_game_title">Return to the main screen?</string>
+    <string name="exit_game_message">End this game and return to team selection.\n\nYour last piece colors and shapes are remembered.</string>
+    <string name="restart_only_message">Keep the teams, pieces, rules and time limit.\n\nReset piece positions and game history to play again.</string>
+    <string name="game_settings">Game settings</string>
+    <string name="screen_direction">Screen orientation</string>
+    <string name="direction_landscape">Landscape (default)</string>
+    <string name="direction_portrait">Portrait</string>
+    <string name="direction_auto">Automatic rotation</string>
     <string name="capture_bonus_stacks">Stack capture bonus on Yut/Mo</string>
     <string name="capture_bonus_hint">Off: Yut/Mo capture gives one bonus in total. On: throw bonus and capture bonus both apply.</string>
     <string name="rules_locked">You can change the time limit now. Capture bonus rules can only change for a new game.</string>
@@ -38,8 +47,10 @@
     <string name="apply">Apply</string>
     <string name="timer_default">03:00</string>
     <string name="initial_status">Team 1 · Enter the Yut result.</string>
-    <string name="pause_time">Pause</string>
-    <string name="resume_time">Resume</string>
+    <string name="pause_time">Pause timer</string>
+    <string name="resume_time">Resume timer</string>
+    <string name="current_turn_heading">%1$s turn</string>
+    <string name="timer_stopped_label">Timer paused</string>
     <string name="no_time_limit">No limit</string>
     <string name="unlimited">Unlimited</string>
     <string name="end_turn">End turn</string>
@@ -62,13 +73,13 @@
     <string name="yut_yut_description">Yut, move forward 4 spaces</string>
     <string name="yut_mo_description">Mo, move forward 5 spaces</string>
     <string name="team_selection">How many teams are playing?</string>
-    <string name="choose_team_count">Choose a team count to start the game.</string>
-    <string name="start_two_teams">2 teams</string>
-    <string name="start_three_teams">3 teams</string>
-    <string name="start_four_teams">4 teams</string>
-    <string name="team_two_detail">Head-to-head</string>
-    <string name="team_three_detail">Three-team rotation</string>
-    <string name="team_four_detail">Four-team rotation</string>
+    <string name="choose_team_count">Choose the teams, then set piece colors and shapes before play.</string>
+    <string name="start_two_teams">Play with 2 teams</string>
+    <string name="start_three_teams">Play with 3 teams</string>
+    <string name="start_four_teams">Play with 4 teams</string>
+    <string name="team_two_detail">1 team vs 1 team</string>
+    <string name="team_three_detail">3 teams take turns</string>
+    <string name="team_four_detail">4 teams take turns</string>
     <string name="game_rules">Game rules</string>
     <string name="game_rules_summary">Turn time: %1$s</string>
     <string name="game_rules_description">Choose how long each turn lasts.</string>
@@ -225,7 +236,7 @@
     <string name="piece_color_pink">Pink</string>
     <string name="piece_color_teal">Teal</string>
     <string name="piece_shape_circle">Circle</string>
-    <string name="piece_shape_square">Rounded square</string>
+    <string name="piece_shape_square">Square</string>
     <string name="piece_shape_diamond">Diamond</string>
     <string name="piece_shape_triangle">Triangle</string>
     <string name="piece_shape_star">Star</string>

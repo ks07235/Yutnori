@@ -34,11 +34,20 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <com.example.yutnoriapp.PieceStackView
+                    android:id="@+id/current_team_piece"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:layout_marginEnd="4dp"
+                    android:importantForAccessibility="no" />
 
                 <TextView
                     android:id="@+id/text_title"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
                     android:includeFontPadding="false"
                     android:text="@string/app_name"
@@ -57,6 +66,10 @@
                 android:padding="9dp"
                 android:src="@drawable/ic_settings" />
 
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
             <Button
                 android:id="@+id/btn_restart"
                 android:layout_width="wrap_content"
@@ -70,6 +83,19 @@
                 android:textColor="@color/btn_text_color"
                 android:textSize="13sp"
                 android:textStyle="bold" />
+            <TextView
+                android:id="@+id/btn_exit_game"
+                style="@style/PrimaryActionButton"
+                android:layout_width="match_parent"
+                android:layout_height="44dp"
+                android:layout_marginTop="4dp"
+                android:background="@drawable/shape_button_exit"
+                android:backgroundTint="@null"
+                android:text="@string/exit_game"
+                android:textAllCaps="false"
+                android:textColor="@color/btn_text_color"
+                android:textSize="13sp" />
+            </LinearLayout>
         </LinearLayout>
 
         <TextView
