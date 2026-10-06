@@ -33,6 +33,7 @@ GitHub 푸시 완료
 
 | 일시(KST) | 작업자 / 로컬 | 버전 / 빌드 | 종류 | 주요 내용 | 검증 / 산출물 | 브랜치 / 소스 기록 |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-06 14:10:22 | Codex / `C:\yutnori` | 1.5.12 / 66 | 소스 보존·검증 | 빌드 59~66 로컬 변경을 기준 소스로 보존, 기능 유지 계약·측정 기준 기록. 이번 단계 앱 동작 변경 없음 | 캐시 없는 테스트 130개 통과, lint 오류 0·경고 44, 기존 APK/AAB 해시 확인 | `baseline/build66-before-refactor` / `9eae39f6f97d3aceec90f8cb4dcd220daaf4c45c`, 태그 `baseline-build66` |
 | 2026-09-27 20:45:30 | ks07235 / 기존 로컬 | 1.4.4 / 52 | 기능·UI | 방향별 화면 통일, 밝은 설정 창, 새 게임 대기 3초 | 상세 내용은 아래 항목 참조 | `feat/team-piece-customization-1.4.0` / [b379fe9](https://github.com/ks07235/Yutnori/commit/b379fe9ec1ea69c841641fb0708d6e646c5cd5a9) |
 | 2026-09-27 21:55:06 | ks07235 / 기존 로컬 | 1.5.0 / 54 | 기능·UI | 잡기 규칙 선택, 랜덤 꾸미기, 역방향 취소, 화면·백업 기능 개선 | 테스트 117개, 에뮬레이터·lint·APK 검증 | `feat/team-piece-customization-1.4.0` / [c69e2eb](https://github.com/ks07235/Yutnori/commit/c69e2eb9b6c8ae8fc08aa79c8f949830ca5c13b7) |
 | 2026-09-27 22:40:46 | ks07235 / 기존 로컬 | 1.5.1 / 55 | UI·문서 | 가로 수직 여백 축소, 오른쪽 공통 패널, 개발 인수인계 문서 | 테스트 119+35개, lint 오류 0, APK 검증 | `feat/team-piece-customization-1.4.0` / [ee41722](https://github.com/ks07235/Yutnori/commit/ee417226edc84b0ce7db47727a41ebe0c632c56c) |
@@ -43,7 +44,7 @@ GitHub 푸시 완료
 
 ## 현재 진행 중
 
-- 2026-10-06 / Codex / `C:\yutnori` / 1.5.12 · 66: 기능을 변경하지 않고 리팩토링 전 기준 소스 보존 및 검증 기준 정리 중. 기존 APK·AAB의 SHA-256이 일치한다. [기준 문서](refactoring-baseline-66.md)를 다음 작업의 기능 유지 계약으로 사용한다. 대규모 리팩토링은 아직 시작하지 않았다.
+- 2026-10-06 / Codex / `C:\yutnori` / 1.5.12 · 66: 리팩토링 전 기준 소스 커밋 및 검증 기준 정리 완료. 캐시 없이 테스트 130개 통과, lint 오류 0·경고 44. 기존 APK·AAB의 SHA-256이 일치한다. [기준 문서](refactoring-baseline-66.md)를 다음 작업의 기능 유지 계약으로 사용한다. 다음 단계는 책임 분리 설계이며 앱 코드 리팩토링은 아직 시작하지 않았다. 원격 반영 여부는 푸시 결과와 원격 해시 확인으로 별도 보고한다.
 
 ## 이전 로컬 작업 기록
 
