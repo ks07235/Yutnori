@@ -2,6 +2,7 @@
 
 기록일: 2026-10-06 / Codex / C:\yutnori
 작업 브랜치: `refactor/history-status-build66`
+구현 커밋: `e84aedac7798e553ba96472bcc15446c6996effa` (2026-10-06 14:30:31 KST)
 기준 태그: `baseline-build66`. 내부 버전: `1.5.12 / 66`.
 
 ## 완료 범위
