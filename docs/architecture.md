@@ -1,6 +1,6 @@
 # Yutnori App Architecture
 
-빌드 66 구조 분리의 다음 작업은 [리팩토링 설계](refactoring-design-66.md)를 따른다. A·B(기록 표시·현황판) 구현과 검증 결과는 [진행 문서](refactoring-progress-66.md)에 기록한다. 화면 배치·판 표시·시간 계산 분리는 아직 예정 단계다.
+빌드 67은 [리팩토링 설계](refactoring-design-66.md)의 A~E 책임 분리를 적용했다. 최신 검증은 [진행 문서](refactoring-progress-66.md)와 [개발 현황](development-status.md)을 따른다.
 
 ## 핵심 규칙
 
@@ -11,10 +11,15 @@
 
 ## 화면 계층
 
-- `MainActivity.java`: 화면 생명주기, 입력 연결, 타이머, 말 배치와 애니메이션을 조정한다.
+- `MainActivity.java`: 화면 생명주기, 입력, 엔진·통계의 확정, 저장과 표시 객체를 연결한다.
+- `GameScreenLayout.java`: 방향별 배치, 패널, insets, 크기 변경과 컨트롤 부모를 관리한다.
+- `BoardPresentation.java`: 논리 노드를 기준으로 말·화살표를 배치하고 이동·잡기·완주·취소 연출을 소유한다. 폐기된 표시의 콜백은 세대 번호로 차단한다.
+- `TurnClock.java`: 전경 시간 정산과 수동 정지·다이얼로그·연출 보류를 구분한다.
+- `MatchStatistics.java`: 팀별 윷 결과, 잡은 말 수, 이동 횟수, 최대 업기를 집계한다. 엔진 명령 성공 시 한 번만 반영하고 취소 스냅샷·저장·백업과 함께 복원한다. 옛 저장에는 부분 기록임을 표시한다.
+- `VictoryPresentation.java`: 팀 색·모양을 포함한 승리 크레딧과 정적 결과 화면을 만든다. 스킵·동작 줄이기·화면 읽기·시스템 애니메이션 비활성화를 지원한다. 화면 회전/백그라운드에서는 폐기하고 복귀 시 정적 결과를 표시한다.
 - `HistoryPresenter.java`: 기록 포맷과 최근 기록 아이콘·색·표시·클릭을 담당한다. 기록 원본과 저장·다이얼로그의 시간 보류는 Activity가 관리한다.
 - `TeamStatusPanel.java`: 현황판의 현재 팀 아이콘·팀 행·완주 표시와 실측 행 높이를 담당한다. 실제 움직이는 말과 별도 View를 사용한다. 화면 교체 시 리스너와 예약 작업을 해제한다.
-- `YutDialogs.java`: 설정, 전체 기록, 게임 종료 다이얼로그를 만든다.
+- `YutDialogs.java`: 설정, 전체 기록, 다시하기/나가기 확인 다이얼로그를 만든다. 승리 표시는 `VictoryPresentation`이 담당한다.
 - `TeamAppearanceDialog.java`: 팀 수 선택 후 팀별 말 색과 모양을 고르는 팝업을 만든다. 게임 시작을 누르기 전까지는 초안만 변경한다.
 - `TeamAppearance.java`: 저장 가능한 색·모양 ID, 추천 조합, 이전 저장 데이터 복원과 중복 색 검증을 담당한다.
 - `PieceStackView.java`: 선택한 색과 모양으로 단독 말과 업힌 말을 함께 그린다. 밝은 말에는 어두운 숫자와 테두리를 사용한다.

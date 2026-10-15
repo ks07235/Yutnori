@@ -1,6 +1,6 @@
 # Yutnori 개발 현황과 인수인계
 
-최종 갱신: 2026-10-06 (한국 시간)
+최종 갱신: 2026-10-15 (한국 시간)
 
 ## 필수 협업 규칙: GitHub 푸시와 사용자 보고
 
@@ -33,6 +33,7 @@ GitHub 푸시 완료
 
 | 일시(KST) | 작업자 / 로컬 | 버전 / 빌드 | 종류 | 주요 내용 | 검증 / 산출물 | 브랜치 / 소스 기록 |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-15 13:33:10 | Codex / `C:\yutnori` | 1.6.0 / 67 | 기능·리팩토링·배포 파일 | 600ms 잡기 반응, 스킵 가능한 승리 크레딧·구조화 통계와 취소/저장/복원. 화면 배치·판 표시·시간 계산 분리, 반복 타이머 행 크기 갱신 요청 축소. 최신 개발/구조/로드맵 문서 동반 갱신 | 테스트 156개, lint 오류 0·경고 47, Android 테스트 소스 컴파일, 서명 APK/AAB 및 빌드 66과 인증서 일치. Drive 폴더 복사·해시 일치, 클라우드 동기화/실기기/Play 출시 미확인 | `refactor/complete-build67` / `88c7e3a0899e6e005e1b523e72136d9a8940e5b6`, 문서 후속 커밋 포함 |
 | 2026-10-06 14:30:31 | Codex / `C:\yutnori` | 1.5.12 / 66 | 리팩토링 A·B | HistoryPresenter·TeamStatusPanel로 기록·현황 표시 분리, 화면 교체 시 리스너/클릭 정리. 게임 엔진·저장 형식·화면 리소스 유지 | 테스트 138개, lint 오류 0·경고 44, debug APK 컴파일, 재생성 PNG 25장 기준 SHA-256 일치. release APK/AAB 미생성 | `refactor/history-status-build66` / `e84aedac7798e553ba96472bcc15446c6996effa` |
 | 2026-10-06 14:17:09 | Codex / `C:\yutnori` | 1.5.12 / 66 | 문서·구조 설계 | 소스 분석을 바탕으로 책임 분리 A~F, 상태 소유권, 회전·애니메이션·저장 호환 규약과 회귀 검증 계획 작성. 기존 architecture의 다시하기/나가기 설명 갱신 | 문서 링크·명시 테스트 참조·diff 확인. 앱 코드 변경 및 새 테스트 실행·APK/AAB 생성 없음 | `design/refactoring-build66` / `24cbeb04c30e18bd0a71b20525f31a9ab7208181` |
 | 2026-10-06 14:10:22 | Codex / `C:\yutnori` | 1.5.12 / 66 | 소스 보존·검증 | 빌드 59~66 로컬 변경을 기준 소스로 보존, 기능 유지 계약·측정 기준 기록. 이번 단계 앱 동작 변경 없음 | 캐시 없는 테스트 130개 통과, lint 오류 0·경고 44, 기존 APK/AAB 해시 확인 | `baseline/build66-before-refactor` / `9eae39f6f97d3aceec90f8cb4dcd220daaf4c45c`, 태그 `baseline-build66` |
@@ -46,7 +47,8 @@ GitHub 푸시 완료
 
 ## 현재 진행 중
 
-- 2026-10-06 / Codex / `C:\yutnori` / 1.5.12 · 66: 리팩토링 A·B(기록 표시·현황판) 구현 완료. `HistoryPresenter`와 `TeamStatusPanel`로 표시 책임을 분리했다. 테스트 138개 통과, lint 오류 0·경고 44, debug APK 컴파일 성공. 재생성 화면 PNG 25장의 SHA-256이 기준과 동일하다. 버전업과 새 release APK/AAB 생성은 없다. 다음은 C(화면 배치)이며 [진행과 검증](refactoring-progress-66.md)을 먼저 읽는다. 작업 브랜치 `refactor/history-status-build66`.
+- 2026-10-15 / Codex / `C:\yutnori` / 1.6.0 · 67 / `refactor/complete-build67`: 잡기 연출 강화, 스킵 가능한 승리 크레딧·팀별 통계, 저장·취소·회전 복원 연결을 구현했다. C/D/E 구조 분리와 F의 타이머 반복 행 크기 재계산 요청 축소도 포함한다. 테스트 156개 통과, lint 오류 0·경고 47, Android 테스트 소스 컴파일 및 서명 APK/AAB 생성 완료. [상세 검증·파일 해시](release-1.6.0-build67.md). Play Console 업로드·출시는 수행하지 않았다.
+- 다음 우선순위는 [수 읽기 모드](next-features-2026-10.md)다. 이번 빌드에는 포함하지 않는다. 온라인 공유·로그인·사진 말 꾸미기는 후순위다.
 - 기준 소스는 `baseline/build66-before-refactor` / `9eae39f`, 기준 기록 문서는 `6710a46`, 태그는 `baseline-build66`으로 GitHub 반영 확인 완료. [기준 문서](refactoring-baseline-66.md)의 테스트 130개·lint 오류 0/경고 44는 이전 기준 검증 결과다. 설계 단계에서 테스트를 재실행한 것으로 해석하지 않는다.
 
 ## 이전 로컬 작업 기록
