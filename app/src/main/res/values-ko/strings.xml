@@ -242,4 +242,11 @@
     <string name="piece_shape_hexagon">육각형</string>
     <string name="finish_destination">골인</string>
     <string name="finish_destination_description">선택한 말 또는 업힌 말을 골인시키기</string>
+    <string name="credits_title">우리의 한 판</string>
+    <string name="credits_skip">건너뛰고 결과 보기</string>
+    <string name="credits_partial">업데이트 이후 또는 기록 가능한 저장 시점부터 집계한 기록입니다.</string>
+    <string name="credits_totals">잡은 말 %1$d개 · 완주 %2$d / 4\n최대 업기 %3$d개 · 말 이동 %4$d회</string>
+    <string name="credits_most">가장 많이 나온 윷: %1$s (%2$d회)</string>
+    <string name="credits_roll_count">%1$s %2$d회</string>
+    <string name="credits_thanks">함께해서 즐거운 한 판이었습니다!</string>
 </resources>

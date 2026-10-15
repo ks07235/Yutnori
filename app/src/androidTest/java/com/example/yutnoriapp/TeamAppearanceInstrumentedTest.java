@@ -28,9 +28,9 @@ public class TeamAppearanceInstrumentedTest {
         dialog(activity).getButton(AlertDialog.BUTTON_POSITIVE).performClick();
     }
 
-    private static Object field(MainActivity activity, String name) {
+    private static Object field(Object activity, String name) {
         try {
-            Field field = MainActivity.class.getDeclaredField(name);
+            Field field = activity.getClass().getDeclaredField(name);
             field.setAccessible(true);
             return field.get(activity);
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
@@ -105,7 +105,7 @@ public class TeamAppearanceInstrumentedTest {
                 assertArrayEquals(new int[]{5, 6, 0, 3}, (int[]) field(activity, "teamColors"));
                 assertArrayEquals(new int[]{4, 5, 2, 3}, (int[]) field(activity, "teamShapes"));
                 assertEquals(3, ((YutGameEngine) field(activity, "game")).getTeamCount());
-                PieceStackView[][] pieces = (PieceStackView[][]) field(activity, "pieceViews");
+                PieceStackView[][] pieces = (PieceStackView[][]) field(field(activity, "boardPresentation"), "pieceViews");
                 for (int team = 0; team < 3; team++) assertNotNull(pieces[team][0]);
             });
         }

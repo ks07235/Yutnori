@@ -35,13 +35,13 @@ public class RotationStabilityTest {
         return s;
     }
 
-    private static Object field(MainActivity a, String name) {
-        try { Field f = MainActivity.class.getDeclaredField(name); f.setAccessible(true); return f.get(a); }
+    private static Object field(Object a, String name) {
+        try { Field f = a.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(a); }
         catch (Exception e) { throw new AssertionError(e); }
     }
 
-    private static void set(MainActivity a, String name, Object value) {
-        try { Field f = MainActivity.class.getDeclaredField(name); f.setAccessible(true); f.set(a, value); }
+    private static void set(Object a, String name, Object value) {
+        try { Field f = a.getClass().getDeclaredField(name); f.setAccessible(true); f.set(a, value); }
         catch (Exception e) { throw new AssertionError(e); }
     }
 
@@ -62,12 +62,12 @@ public class RotationStabilityTest {
     public void rotationDuringMoveKeepsNewTurnTimeAndExactlyOneHistoryEntry() {
         try (ActivityScenario<MainActivity> s = start()) {
             s.onActivity(a -> {
-                set(a, "remainingTurnMillis", 7_000L);
+                set(field(a, "turnClock"), "remainingTurnMillis", 7_000L);
                 a.findViewById(R.id.btn_do).performClick();
                 commit(a);
                 assertTrue((boolean) field(a, "isAnimatingMove"));
                 assertEquals(1, game(a).getCurrentTeam());
-                assertEquals(180_000L, (long) field(a, "remainingTurnMillis"), 100);
+                assertEquals(180_000L, (long) field(field(a, "turnClock"), "remainingTurnMillis"), 100);
                 a.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             });
             SystemClock.sleep(900);
@@ -79,7 +79,7 @@ public class RotationStabilityTest {
                 s.onActivity(a -> {
                     assertEquals(16, game(a).getPiece(0, 0).position);
                     assertEquals(1, game(a).getCurrentTeam());
-                    assertTrue((long) field(a, "remainingTurnMillis") > 165_000L);
+                    assertTrue((long) field(field(a, "turnClock"), "remainingTurnMillis") > 165_000L);
                     assertEquals(3, ((List<?>) field(a, "turnLog")).size());
                     assertFalse((boolean) field(a, "isAnimatingMove"));
                     assertBoardLayersAndPiece(a, 16);
@@ -116,13 +116,13 @@ public class RotationStabilityTest {
     public void undoBonusRollRemovesTime() {
         try (ActivityScenario<MainActivity> s = start()) {
             s.onActivity(a -> {
-                set(a, "isTimerPaused", true);
-                long before = (long) field(a, "remainingTurnMillis");
+                set(field(a, "turnClock"), "isTimerPaused", true);
+                long before = (long) field(field(a, "turnClock"), "remainingTurnMillis");
                 for (int i = 0; i < 4; i++) {
                     a.findViewById(R.id.btn_yut).performClick();
-                    assertEquals(before + 30_000L, (long) field(a, "remainingTurnMillis"));
+                    assertEquals(before + 30_000L, (long) field(field(a, "turnClock"), "remainingTurnMillis"));
                     a.findViewById(R.id.btn_undo_roll).performClick();
-                    assertEquals(before, (long) field(a, "remainingTurnMillis"));
+                    assertEquals(before, (long) field(field(a, "turnClock"), "remainingTurnMillis"));
                 }
             });
         }
@@ -134,10 +134,10 @@ public class RotationStabilityTest {
             AtomicReference<MainActivity> ref = new AtomicReference<>();
             s.onActivity(ref::set);
             s.moveToState(Lifecycle.State.CREATED);
-            long before = (long) field(ref.get(), "remainingTurnMillis");
+            long before = (long) field(field(ref.get(), "turnClock"), "remainingTurnMillis");
             SystemClock.sleep(1_500);
             InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> call(ref.get(), "persistGameState"));
-            assertEquals(before, (long) field(ref.get(), "remainingTurnMillis"));
+            assertEquals(before, (long) field(field(ref.get(), "turnClock"), "remainingTurnMillis"));
             s.moveToState(Lifecycle.State.RESUMED);
         }
     }
@@ -151,21 +151,21 @@ public class RotationStabilityTest {
                     .putBoolean("capture_bonus_stacks", stacking).commit();
         try (ActivityScenario<MainActivity> s = start()) {
             s.onActivity(a -> {
-                set(a, "isTimerPaused", true);
+                set(field(a, "turnClock"), "isTimerPaused", true);
                 game(a).getPiece(1, 0).position = 16;
                 game(a).getPiece(1, 1).position = 0;
                 a.findViewById(R.id.btn_do).performClick();
                 a.findViewById(R.id.btn_yut).performClick();
                 game(a).selectResult(0);
                 game(a).selectResult(1);
-                set(a, "remainingTurnMillis", 10_000L);
+                set(field(a, "turnClock"), "remainingTurnMillis", 10_000L);
                 commit(a);
                 a.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             });
             SystemClock.sleep(900);
             s.onActivity(a -> {
                 assertEquals(stacking ? 2 : 1, game(a).getNormalRollAllowance());
-                assertEquals(stacking ? 70_000L : 40_000L, (long) field(a, "remainingTurnMillis"));
+                assertEquals(stacking ? 70_000L : 40_000L, (long) field(field(a, "turnClock"), "remainingTurnMillis"));
                 assertEquals(BoardPath.START_NODE, game(a).getPiece(1, 0).position);
                 assertEquals(BoardPath.START_NODE, game(a).getPiece(1, 1).position);
             });
@@ -205,7 +205,7 @@ public class RotationStabilityTest {
                 s.onActivity(a -> a.setRequestedOrientation(orientation));
                 SystemClock.sleep(600);
                 s.onActivity(a -> {
-                    FrameLayout[][] spots = (FrameLayout[][]) field(a, "waitSpots");
+                    FrameLayout[][] spots = (FrameLayout[][]) field(field(a, "boardPresentation"), "waitSpots");
                     View fourth = spots[game(a).getCurrentTeam()][3];
                     ViewGroup parent = (ViewGroup) fourth.getParent();
                     assertTrue("Last waiting piece is clipped", fourth.getRight() <= parent.getWidth());
@@ -255,7 +255,7 @@ public class RotationStabilityTest {
         int[] artOrigin = new int[2]; int[] overlayOrigin = new int[2];
         art.getLocationOnScreen(artOrigin); overlay.getLocationOnScreen(overlayOrigin);
         assertArrayEquals(artOrigin, overlayOrigin);
-        PieceStackView[][] pieces = (PieceStackView[][]) field(a, "pieceViews");
+        PieceStackView[][] pieces = (PieceStackView[][]) field(field(a, "boardPresentation"), "pieceViews");
         View piece = pieces[0][0];
         float[] center = overlay.centerForSpot(node);
         assertEquals(center[0], piece.getX() + piece.getWidth() / 2f, 1.5f);

@@ -49,6 +49,193 @@ public class BoardUxTest {
 
     @After public void close() { if (controller != null) controller.pause().stop().destroy(); }
 
+    @Test public void statisticsFollowCaptureUndoRecreateAndBackup() throws Exception {
+        game().getPiece(1, 0).position = 17;
+        game().getPiece(1, 1).position = 17;
+        call("renderBoardPiecesNow");
+        call("handleYutInput", 2);
+        call("selectPiece", 0, 0);
+        call("commitSelectedMove");
+        MatchStatistics stats = (MatchStatistics) field(activity, "matchStatistics");
+        assertEquals(2, stats.captures(0));
+        assertEquals(1, stats.rolls(0, 1));
+        // Interrupt presentation: committed totals and positions must remain unchanged.
+        rotate("ko-rKR-w640dp-h360dp-land-mdpi");
+        assertEquals(BoardPath.START_NODE, game().getPiece(1, 0).position);
+        assertEquals(2, stats.captures(0));
+        assertFalse((Boolean) field(activity, "isAnimatingMove"));
+        GameStateStore store = (GameStateStore) field(activity, "stateStore");
+        call("persistGameState");
+        String backup = store.exportBackup();
+        store.importBackup(backup);
+        assertArrayEquals(stats.snapshot(), store.restoreAppState(0).statistics);
+        controller.recreate(); activity = controller.get(); settle();
+        stats = (MatchStatistics) field(activity, "matchStatistics");
+        assertEquals(2, stats.captures(0));
+        call("undoLastAction"); settle(); settle();
+        assertEquals(0, stats.captures(0));
+        assertEquals(1, stats.rolls(0, 1));
+        assertEquals(17, game().getPiece(1, 0).position);
+        call("undoLastAction"); settle();
+        assertEquals(0, stats.rolls(0, 1));
+        call("resetGame");
+        assertTrue(stats.isComplete());
+        assertEquals(0, stats.moves(0));
+    }
+
+    @Test public void captureRecoilCompletesAndRestoresTransforms() {
+        game().getPiece(1, 0).position = 17;
+        call("renderBoardPiecesNow");
+        call("handleYutInput", 2); call("selectPiece", 0, 0); call("commitSelectedMove");
+        settle(); settle(); settle();
+        PieceStackView caught = ((PieceStackView[][]) field(field(activity, "boardPresentation"), "pieceViews"))[1][0];
+        assertEquals(0f, caught.getRotation(), 0.001f);
+        assertEquals(1f, caught.getAlpha(), 0.001f);
+        assertEquals(1f, caught.getScaleX(), 0.001f);
+        assertFalse((Boolean) field(activity, "isAnimatingMove"));
+        assertEquals(1, ((MatchStatistics) field(activity, "matchStatistics")).captures(0));
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
+    public void victoryCreditsSkipRotationAndRecreationKeepOneCommittedResult() throws Exception {
+        ShadowChoreographer.setPaused(true);
+        finishMatch();
+        AlertDialog dialog = latestVictory();
+        layoutVictory(dialog);
+        screenshot("v160-victory-landscape", dialog.getWindow().getDecorView());
+        View skip = dialog.findViewById(R.id.victory_skip);
+        Object credits = field(activity, "victoryPresentation");
+        android.widget.ScrollView viewport = dialog.findViewById(R.id.victory_scroll);
+        assertEquals("static=" + field(credits, "staticOnly") + ", summary=" + field(credits, "summary")
+                + ", animator=" + field(credits, "animator") + ", viewport=" + viewport.getHeight()
+                + ", content=" + viewport.getChildAt(0).getHeight(), View.VISIBLE, skip.getVisibility());
+        assertTrue(skip.getHeight() >= 48);
+        assertTrue(bounds(skip).bottom <= bounds(dialog.getButton(AlertDialog.BUTTON_POSITIVE)).top);
+        skip.performClick();
+        assertEquals(View.GONE, skip.getVisibility());
+        int[] totals = ((MatchStatistics) field(activity, "matchStatistics")).snapshot();
+        rotate("ko-rKR-w360dp-h740dp-port-mdpi");
+        assertFalse(dialog.isShowing());
+        dialog = latestVictory(); layoutVictory(dialog);
+        assertEquals(View.GONE, dialog.findViewById(R.id.victory_skip).getVisibility());
+        screenshot("v160-victory-portrait", dialog.getWindow().getDecorView());
+        controller.pause().stop().destroy();
+        controller = Robolectric.buildActivity(MainActivity.class).setup().visible();
+        activity = controller.get(); settle();
+        dialog = latestVictory(); layoutVictory(dialog);
+        assertArrayEquals(totals, ((MatchStatistics) field(activity, "matchStatistics")).snapshot());
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick();
+        shadowOf(Looper.getMainLooper()).idle();
+        assertFalse((Boolean) field(activity, "victoryPending"));
+        assertNull(field(activity, "victoryPresentation"));
+    }
+
+    @Test @Config(qualifiers = "en-rUS-w640dp-h320dp-land-mdpi")
+    public void largeTextReducedMotionVictoryIsStaticAndReachable() throws Exception {
+        android.content.res.Configuration config = activity.getResources().getConfiguration();
+        config.fontScale = 1.7f;
+        activity.getResources().updateConfiguration(config, activity.getResources().getDisplayMetrics());
+        Field reduced = MainActivity.class.getDeclaredField("reducedMotion");
+        reduced.setAccessible(true); reduced.setBoolean(activity, true);
+        finishMatch();
+        AlertDialog dialog = latestVictory(); layoutVictory(dialog);
+        assertEquals(View.GONE, dialog.findViewById(R.id.victory_skip).getVisibility());
+        View footer = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        assertTrue(footer.getHeight() >= 48);
+        assertTrue(bounds(footer).bottom <= bounds(dialog.getWindow().getDecorView()).bottom);
+        assertTrue(dialog.findViewById(R.id.victory_scroll).getHeight() > 40);
+        screenshot("v160-victory-large-font", dialog.getWindow().getDecorView());
+    }
+
+    @Test public void creditsCompleteNaturallyWithoutAcknowledgingTheMatch() throws Exception {
+        ShadowChoreographer.setPaused(true);
+        settings(0L);
+        finishMatch();
+        AlertDialog dialog = latestVictory(); layoutVictory(dialog);
+        assertNotNull(field(field(activity, "victoryPresentation"), "animator"));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(100));
+        assertEquals(View.GONE, dialog.findViewById(R.id.victory_skip).getVisibility());
+        assertEquals(0, dialog.findViewById(R.id.victory_scroll).getScrollY());
+        assertTrue((Boolean) field(activity, "victoryPending"));
+        assertTrue((Boolean) field(activity, "victoryCreditsSeen"));
+    }
+
+    private void finishMatch() {
+        for (int id = 0; id < 3; id++) {
+            Piece piece = game().getPiece(0, id);
+            piece.position = BoardPath.END_NODE; piece.isFinished = true;
+        }
+        game().getPiece(0, 3).position = 14;
+        call("renderBoardPiecesNow");
+        call("handleYutInput", 2); call("selectPiece", 0, 3); call("commitSelectedMove");
+        advanceFrames(1600);
+        settle(); settle();
+        assertTrue(game().isGameOver());
+    }
+
+    private AlertDialog latestVictory() {
+        Object presentation = field(activity, "victoryPresentation");
+        assertNotNull(presentation);
+        return (AlertDialog) field(presentation, "dialog");
+    }
+
+    private void layoutVictory(AlertDialog dialog) {
+        View root = dialog.getWindow().getDecorView();
+        android.content.res.Configuration config = activity.getResources().getConfiguration();
+        root.measure(View.MeasureSpec.makeMeasureSpec(Math.min(640, config.screenWidthDp - 32), View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(config.screenHeightDp - 24, View.MeasureSpec.AT_MOST));
+        root.layout(0, 0, root.getMeasuredWidth(), root.getMeasuredHeight());
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(50));
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
+    public void unchangedTimerRefreshDoesNotRepeatPanelLayoutWork() throws Exception {
+        GameScreenLayout layout = (GameScreenLayout) field(activity, "screenLayout");
+        GameScreenLayout.Events delegate = (GameScreenLayout.Events) field(layout, "events");
+        int[] resizeCalls = {0};
+        Field events = GameScreenLayout.class.getDeclaredField("events");
+        events.setAccessible(true);
+        events.set(layout, java.lang.reflect.Proxy.newProxyInstance(
+                GameScreenLayout.Events.class.getClassLoader(),
+                new Class<?>[]{GameScreenLayout.Events.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("resizeLandscapeSummaryRows")) resizeCalls[0]++;
+                    return method.invoke(delegate, args);
+                }));
+        for (int i = 0; i < 60; i++) call("updateTimerView");
+        System.out.println("Repeated timer refreshes: 60; summary resize dispatches: " + resizeCalls[0]);
+        assertEquals(0, resizeCalls[0]);
+        settings(0L);
+        assertTrue(resizeCalls[0] > 0);
+        assertEquals(View.GONE, activity.findViewById(R.id.btn_time_stop).getVisibility());
+    }
+
+    @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
+    public void disposedLayoutAndBoardCannotDeliverOldClicksOrResizeWork() {
+        GameScreenLayout oldLayout = (GameScreenLayout) field(activity, "screenLayout");
+        BoardPresentation oldBoard = (BoardPresentation) field(activity, "boardPresentation");
+        View.OnLayoutChangeListener oldListener =
+                (View.OnLayoutChangeListener) field(oldLayout, "resizeListener");
+        PieceStackView oldPiece = ((PieceStackView[][]) field(oldBoard, "pieceViews"))[0][0];
+        int[] deliveries = {0};
+        oldBoard.postRestore(() -> deliveries[0]++);
+        oldLayout.scheduleBoardLayoutRefresh();
+        android.content.res.Configuration config = new android.content.res.Configuration(
+                activity.getResources().getConfiguration());
+        activity.onConfigurationChanged(config);
+        settle();
+        assertEquals(0, deliveries[0]);
+        assertTrue((Boolean) field(oldLayout, "disposed"));
+        assertTrue((Boolean) field(oldBoard, "disposed"));
+        call("handleYutInput", 1);
+        oldPiece.performClick();
+        assertEquals(-1, field(activity, "selectedPreviewPieceId"));
+        YutGameEngine.SavedState before = game().saveState();
+        oldListener.onLayoutChange(oldPiece, 0, 0, 200, 200, 0, 0, 100, 100);
+        settle();
+        assertArrayEquals(before.piecePositions, game().saveState().piecePositions);
+        assertEquals(before.currentTeam, game().getCurrentTeam());
+    }
+
     @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
     public void obsoleteStatusAndHistoryCallbacksCannotChangeTheReboundScreen() {
         Object oldPanel = field(activity, "teamStatusPanel");
@@ -66,10 +253,10 @@ public class BoardUxTest {
         oldRow.setLayoutParams(params);
         oldResize.run();
         assertEquals(77, oldRow.getLayoutParams().height);
-        int holds = (Integer) field(activity, "timerDialogHoldCount");
+        int holds = (Integer) field(field(activity, "turnClock"), "timerDialogHoldCount");
         oldHistoryItem.performClick();
         oldRail.performClick();
-        assertEquals(holds, field(activity, "timerDialogHoldCount"));
+        assertEquals(holds, field(field(activity, "turnClock"), "timerDialogHoldCount"));
         assertArrayEquals(before.piecePositions, game().saveState().piecePositions);
         assertEquals(before.currentTeam, game().getCurrentTeam());
         assertInfoVisible();
@@ -213,7 +400,7 @@ public class BoardUxTest {
     @Test @Config(qualifiers = "ko-rKR-w640dp-h360dp-land-mdpi")
     public void narrowLandscapeKeepsInformationAndFinishTargetInsideScreen() throws Exception {
         assertInfoVisible();
-        View[][] spots = (View[][]) field(activity, "waitSpots");
+        View[][] spots = (View[][]) field(field(activity, "boardPresentation"), "waitSpots");
         assertTrue(bounds(activity.findViewById(R.id.waiting_area)).contains(bounds(spots[0][3])));
         showProgressExample();
         screenshot("landscape-progress");
@@ -320,9 +507,9 @@ public class BoardUxTest {
         call("commitSelectedMove");
         advanceFrames(120);
         assertEquals(true, field(activity, "isAnimatingMove"));
-        assertNull(field(activity, "finishAnimationView"));
+        assertNull(field(field(activity, "boardPresentation"), "finishAnimationView"));
         advanceFrames(220);
-        View ghost = (View) field(activity, "finishAnimationView");
+        View ghost = (View) field(field(activity, "boardPresentation"), "finishAnimationView");
         assertNotNull("The piece should leave the arrival node towards the goal", ghost);
         assertEquals(View.VISIBLE, activity.findViewById(R.id.finish_destination).getVisibility());
         float initialY = ghost.getY();
@@ -331,7 +518,7 @@ public class BoardUxTest {
         screenshot("finish-animation");
         advanceFrames(1000);
         settle();
-        assertNull(field(activity, "finishAnimationView"));
+        assertNull(field(field(activity, "boardPresentation"), "finishAnimationView"));
         assertEquals(false, field(activity, "isAnimatingMove"));
         assertTrue(game().getPiece(0, 0).isFinished);
         assertEquals(View.GONE, activity.findViewById(R.id.finish_destination).getVisibility());
@@ -346,16 +533,16 @@ public class BoardUxTest {
         ShadowChoreographer.setPaused(true);
         call("commitSelectedMove");
         advanceFrames(200);
-        assertNotNull(field(activity, "finishAnimationView"));
+        assertNotNull(field(field(activity, "boardPresentation"), "finishAnimationView"));
         controller.pause();
-        assertNull(field(activity, "finishAnimationView"));
+        assertNull(field(field(activity, "boardPresentation"), "finishAnimationView"));
         controller.stop().destroy();
         ShadowChoreographer.setPaused(false);
         controller = Robolectric.buildActivity(MainActivity.class).setup().visible();
         activity = controller.get();
         settle();
         assertTrue(game().getPiece(0, 0).isFinished);
-        assertNull(field(activity, "finishAnimationView"));
+        assertNull(field(field(activity, "boardPresentation"), "finishAnimationView"));
         assertEquals(false, field(activity, "isAnimatingMove"));
         assertEquals(View.GONE, activity.findViewById(R.id.finish_destination).getVisibility());
     }
@@ -380,7 +567,7 @@ public class BoardUxTest {
             assertTrue(button.getHeight() >= 48);
             assertTrue(bounds(button).left >= bounds(activity.findViewById(R.id.board_container)).right);
         }
-        View[][] spots = (View[][]) field(activity, "waitSpots");
+        View[][] spots = (View[][]) field(field(activity, "boardPresentation"), "waitSpots");
         assertTrue(bounds(activity.findViewById(R.id.waiting_area)).contains(bounds(spots[0][3])));
         screenshot("unlimited-landscape");
         assertTrue(bounds(spots[0][3]).top > bounds(spots[0][0]).bottom);
@@ -403,7 +590,7 @@ public class BoardUxTest {
         assertEquals(View.GONE, activity.findViewById(R.id.control_panel).getVisibility());
         assertEquals(View.GONE, activity.findViewById(R.id.btn_toggle_controls).getVisibility());
         assertEquals(View.VISIBLE, activity.findViewById(R.id.unlimited_rolls).getVisibility());
-        PieceStackView[][] views = (PieceStackView[][]) field(activity, "pieceViews");
+        PieceStackView[][] views = (PieceStackView[][]) field(field(activity, "boardPresentation"), "pieceViews");
         assertEquals(36, field(views[0][0], "visualDiameterPx"));
         settings(180000L);
         settle();
@@ -490,7 +677,7 @@ public class BoardUxTest {
             assertTrue(screen.contains(column));
             if (i > 0) assertTrue(bounds(activity.findViewById(columns[i - 1])).right <= column.left);
         }
-        View[][] spots = (View[][]) field(activity, "waitSpots");
+        View[][] spots = (View[][]) field(field(activity, "boardPresentation"), "waitSpots");
         assertTrue(bounds(activity.findViewById(R.id.waiting_area)).contains(bounds(spots[0][3])));
         call("handleYutInput", 4);
         call("handleYutInput", 2);
@@ -682,7 +869,7 @@ public class BoardUxTest {
                 assertEquals(6, ((ViewGroup.MarginLayoutParams) row.getLayoutParams()).topMargin);
             }
         }
-        View[][] waitingSpots = (View[][]) field(activity, "waitSpots");
+        View[][] waitingSpots = (View[][]) field(field(activity, "boardPresentation"), "waitSpots");
         assertEquals(6, ((ViewGroup.MarginLayoutParams) waitingSpots[0][1].getLayoutParams()).topMargin);
         int[] left = {R.id.btn_do, R.id.btn_gae, R.id.btn_geol};
         int[] right = {R.id.btn_yut, R.id.btn_mo, R.id.btn_bdo};
@@ -809,7 +996,7 @@ public class BoardUxTest {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick();
             assertEquals(index == 4 ? 0L : 180000L, field(activity, "turnDurationMillis"));
             assertEquals(position, game().getPiece(0, 0).position);
-            assertEquals(index == 4 ? 0L : 180000L, field(activity, "remainingTurnMillis"));
+            assertEquals(index == 4 ? 0L : 180000L, field(field(activity, "turnClock"), "remainingTurnMillis"));
         }
     }
 
@@ -865,11 +1052,11 @@ public class BoardUxTest {
         shadowOf(Looper.getMainLooper()).idle();
         assertEquals(5, game().getPiece(0, 0).position);
         assertEquals(View.GONE, activity.findViewById(R.id.setup_panel).getVisibility());
-        assertEquals(0, field(activity, "timerDialogHoldCount"));
+        assertEquals(0, field(field(activity, "turnClock"), "timerDialogHoldCount"));
     }
 
     private void assertExtraThrowHint() {
-        android.widget.TextView hint = (android.widget.TextView) field(activity, "rollHint");
+        android.widget.TextView hint = (android.widget.TextView) field(field(activity, "screenLayout"), "rollHint");
         assertEquals(activity.getString(R.string.extra_rolls, 1), hint.getText().toString());
     }
 
@@ -885,7 +1072,7 @@ public class BoardUxTest {
         assertEquals(true, field(activity, "undoAnimating"));
         assertEquals(2, field(activity, "queuedUndoCount"));
         advanceFrames(32);
-        java.util.List<View> ghosts = (java.util.List<View>) field(activity, "undoGhosts");
+        java.util.List<View> ghosts = (java.util.List<View>) field(field(activity, "boardPresentation"), "undoGhosts");
         assertFalse(ghosts.isEmpty());
         View ghost = ghosts.get(0);
         float x = ghost.getX(), y = ghost.getY();
@@ -923,7 +1110,7 @@ public class BoardUxTest {
         call("undoLastAction"); advanceFrames(32);
         rotate("ko-rKR-w640dp-h360dp-land-mdpi");
         assertEquals(false, field(activity, "undoAnimating"));
-        assertTrue(((java.util.List<?>) field(activity, "undoGhosts")).isEmpty());
+        assertTrue(((java.util.List<?>) field(field(activity, "boardPresentation"), "undoGhosts")).isEmpty());
         assertEquals(BoardPath.START_NODE, game().getPiece(0, 0).position);
         ShadowChoreographer.setPaused(false);
         controller.pause().stop().destroy();

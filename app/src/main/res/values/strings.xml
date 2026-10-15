@@ -243,4 +243,11 @@
     <string name="piece_shape_hexagon">Hexagon</string>
     <string name="finish_destination">Finish</string>
     <string name="finish_destination_description">Finish the selected piece or stack</string>
+    <string name="credits_title">Our Match</string>
+    <string name="credits_skip">Skip to results</string>
+    <string name="credits_partial">Records counted since this update or the last compatible save.</string>
+    <string name="credits_totals">Captured %1$d pieces · Finished %2$d / 4\nLargest stack %3$d · Moves %4$d</string>
+    <string name="credits_most">Most rolled: %1$s (%2$d)</string>
+    <string name="credits_roll_count">%1$s %2$d</string>
+    <string name="credits_thanks">Thanks for a great match!</string>
 </resources>

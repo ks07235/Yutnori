@@ -112,6 +112,19 @@ final class GameStateStore {
                 throw new org.json.JSONException("Preference type mismatch");
             }
             values.put(key, value);
+            if (key.equals("match_statistics") || key.matches("undo_history_[0-9]+_statistics")) {
+                String encoded = (String) value;
+                if (!encoded.isEmpty()) {
+                    String[] parts = encoded.split(",", -1);
+                    int[] statistics = new int[parts.length];
+                    try {
+                        for (int i = 0; i < parts.length; i++) statistics[i] = Integer.parseInt(parts[i]);
+                    } catch (NumberFormatException error) {
+                        throw new org.json.JSONException("Invalid statistics");
+                    }
+                    if (!MatchStatistics.valid(statistics)) throw new org.json.JSONException("Invalid statistics");
+                }
+            }
         }
         if (!(values.get(KEY_GAME_STARTED) instanceof Boolean)
                 || !(values.get(KEY_TURN_DURATION) instanceof Long)) throw new org.json.JSONException("Missing state");
@@ -181,6 +194,8 @@ final class GameStateStore {
         AppState appState = new AppState();
         appState.gameStarted = true;
         appState.victoryPending = prefs.getBoolean("victory_pending", false);
+        appState.victoryCreditsSeen = prefs.getBoolean("victory_credits_seen", false);
+        appState.statistics = parseInts(prefs.getString("match_statistics", ""));
         appState.bonusTimeBaselineResultId = prefs.getInt("bonus_time_baseline_result_id", 0);
         appState.savedAtEpochMillis = Math.max(0L, prefs.getLong(KEY_GAME_SAVED_AT, 0L));
         appState.remainingTurnMillis = Math.max(0L, prefs.getLong(KEY_REMAINING_TIMER, DEFAULT_TURN_DURATION_MILLIS));
@@ -226,6 +241,8 @@ final class GameStateStore {
         editor.putBoolean("reduced_motion", settings.reducedMotion);
         editor.putBoolean(KEY_GAME_STARTED, appState.gameStarted);
         editor.putBoolean("victory_pending", appState.victoryPending);
+        editor.putBoolean("victory_credits_seen", appState.victoryCreditsSeen);
+        editor.putString("match_statistics", joinInts(appState.statistics));
         editor.putInt("bonus_time_baseline_result_id", appState.bonusTimeBaselineResultId);
         editor.putLong(
                 KEY_GAME_SAVED_AT,
@@ -281,6 +298,7 @@ final class GameStateStore {
             state.statusMessage = prefs.getString(prefix + "status", "");
             state.statusColor = prefs.getInt(prefix + "color", defaultStatusColor);
             state.turnLog = parseStrings(prefs.getString(prefix + "log", ""));
+            state.statistics = parseInts(prefs.getString(prefix + "statistics", ""));
             state.actionKind = prefs.getInt(prefix + "action", MoveUndoState.MOVE);
             state.reversePaths = new int[16][];
             for (int p = 0; p < 16; p++) state.reversePaths[p] = parseInts(prefs.getString(prefix + "path_" + p, ""));
@@ -304,6 +322,7 @@ final class GameStateStore {
             editor.putString(prefix + "status", state.statusMessage);
             editor.putInt(prefix + "color", state.statusColor);
             editor.putString(prefix + "log", joinStrings(state.turnLog));
+            editor.putString(prefix + "statistics", joinInts(state.statistics));
             editor.putInt(prefix + "action", state.actionKind);
             for (int p = 0; p < 16; p++) editor.putString(prefix + "path_" + p,
                     state.reversePaths == null ? "" : joinInts(state.reversePaths[p]));
@@ -402,10 +421,12 @@ final class GameStateStore {
     }
 
     private static String expectedBackupType(String key) {
+        if (key.equals("victory_credits_seen")) return "boolean";
+        if (key.equals("match_statistics")) return "string";
         if (key.startsWith("undo_history_") && !key.equals("undo_history_count")) {
             String suffix = key.replaceFirst("^undo_history_[0-9]+_", "");
             if (suffix.startsWith("engine_")) return expectedBackupType(suffix);
-            if (suffix.matches("path_[0-9]+|status|log")) return "string";
+            if (suffix.matches("path_[0-9]+|status|log|statistics")) return "string";
             if (suffix.equals("remaining")) return "long";
             if (suffix.matches("paused|expired")) return "boolean";
             if (suffix.matches("team|piece|color|action|bonus_baseline")) return "int";
@@ -543,6 +564,8 @@ final class GameStateStore {
     }
 
     static class AppState {
+        boolean victoryCreditsSeen;
+        int[] statistics;
         boolean gameStarted;
         boolean victoryPending;
         int bonusTimeBaselineResultId;
@@ -565,6 +588,7 @@ final class GameStateStore {
     }
 
     static class MoveUndoState {
+        int[] statistics;
         int[][] reversePaths;
         static final int ROLL = 0, MOVE = 1, TURN = 2;
         int actionKind = MOVE;

@@ -50,11 +50,11 @@ public class HistoryPresentationTest {
         assertEquals(activity.getString(R.string.history_none), latestIcon().getContentDescription());
         latestIcon().performClick();
         AlertDialog dialog = latestDialog();
-        assertEquals(1, field(activity, "timerDialogHoldCount"));
+        assertEquals(1, field(field(activity, "turnClock"), "timerDialogHoldCount"));
         assertNotNull(dialog.getButton(AlertDialog.BUTTON_NEUTRAL));
         dialog.dismiss();
         shadowOf(Looper.getMainLooper()).idle();
-        assertEquals(0, field(activity, "timerDialogHoldCount"));
+        assertEquals(0, field(field(activity, "turnClock"), "timerDialogHoldCount"));
     }
 
     @Test public void latestEntryAndFullHistoryKeepOrderColorAndNestedHolds() {
@@ -70,16 +70,16 @@ public class HistoryPresentationTest {
         latestIcon().performClick();
         AlertDialog entry = latestDialog();
         assertEquals(latest, ((TextView) entry.findViewById(android.R.id.message)).getText().toString());
-        assertEquals(1, field(activity, "timerDialogHoldCount"));
+        assertEquals(1, field(field(activity, "turnClock"), "timerDialogHoldCount"));
         entry.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
         shadowOf(Looper.getMainLooper()).idle();
         AlertDialog all = latestDialog();
         assertNotSame(entry, all);
-        assertEquals(1, field(activity, "timerDialogHoldCount"));
+        assertEquals(1, field(field(activity, "turnClock"), "timerDialogHoldCount"));
         assertEquals(Arrays.asList("1팀: 윷 입력", "1팀: 새 게임 시작"), log());
         all.dismiss();
         shadowOf(Looper.getMainLooper()).idle();
-        assertEquals(0, field(activity, "timerDialogHoldCount"));
+        assertEquals(0, field(field(activity, "turnClock"), "timerDialogHoldCount"));
         assertEquals(before, log());
         rail().performClick();
         latestDialog().getButton(AlertDialog.BUTTON_NEUTRAL).performClick();

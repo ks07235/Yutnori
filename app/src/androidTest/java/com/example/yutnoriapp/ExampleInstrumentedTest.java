@@ -648,9 +648,12 @@ public class ExampleInstrumentedTest {
 
     private void setRemainingTurnMillis(MainActivity activity, long value) {
         try {
-            java.lang.reflect.Field field = MainActivity.class.getDeclaredField("remainingTurnMillis");
+            java.lang.reflect.Field clockField = MainActivity.class.getDeclaredField("turnClock");
+            clockField.setAccessible(true);
+            Object clock = clockField.get(activity);
+            java.lang.reflect.Field field = TurnClock.class.getDeclaredField("remainingTurnMillis");
             field.setAccessible(true);
-            field.setLong(activity, value);
+            field.setLong(clock, value);
         } catch (ReflectiveOperationException exception) {
             throw new AssertionError(exception);
         }

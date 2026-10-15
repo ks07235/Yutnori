@@ -62,24 +62,14 @@ public class MainActivity extends AppCompatActivity {
     private GameFeedback feedback;
 
     private AppUpdateChecker appUpdateChecker;
-    private PieceStackView[][] pieceViews;
-    private FrameLayout[][] waitSpots;
     private HistoryPresenter historyPresenter;
     private TeamStatusPanel teamStatusPanel;
-    private TextView finishDestination;
-    private PieceStackView finishAnimationView;
-    private LinearLayout.LayoutParams timedEndTurnParams;
-    private LinearLayout unlimitedRolls;
-    private LinearLayout unlimitedFooter;
-    private LinearLayout unlimitedWaiting;
-    private LinearLayout landscapeResults;
-    private boolean unlimitedControlsAttached;
-    private TextView rollHint;
+    private GameScreenLayout screenLayout;
+    private BoardPresentation boardPresentation;
     private boolean captureBonusStacks;
     private boolean reducedMotion;
     private boolean undoAnimating;
     private int queuedUndoCount;
-    private final ArrayList<View> undoGhosts = new ArrayList<>();
     private String pendingBackup;
     private boolean skipPersistence;
     private final androidx.activity.result.ActivityResultLauncher<String> exportLauncher =
@@ -103,8 +93,6 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout resultLayout;
     private LinearLayout waitingArea;
     private View setupPanel;
-    private final ArrayList<View> previewViews = new ArrayList<>();
-    private final ArrayList<View> pieceGuideViews = new ArrayList<>();
     private final ArrayList<String> turnLog = new ArrayList<>();
     private final Handler timerHandler = new Handler(Looper.getMainLooper());
     private final Runnable timerTick = new Runnable() {
@@ -126,25 +114,17 @@ public class MainActivity extends AppCompatActivity {
     private boolean gameOverDialogVisible = false;
     private boolean victoryPending = false;
     private int bonusTimeBaselineResultId = 0;
-    private final ArrayList<Animator> moveAnimators = new ArrayList<>();
     private long turnDurationMillis = GameStateStore.DEFAULT_TURN_DURATION_MILLIS;
-    private long remainingTurnMillis = GameStateStore.DEFAULT_TURN_DURATION_MILLIS;
+    private final TurnClock turnClock = new TurnClock(GameStateStore.DEFAULT_TURN_DURATION_MILLIS);
+    private final MatchStatistics matchStatistics = new MatchStatistics();
+    private VictoryPresentation victoryPresentation;
+    private boolean victoryCreditsSeen;
     private long lastBackPressMillis = 0L;
-    private boolean isTimerPaused = false;
-    private boolean isTimerHeldForAnimation = false;
-    private int timerDialogHoldCount = 0;
     private boolean timeExpiredNotified = false;
-    private long timerCheckpointElapsedMillis = 0L;
     private boolean gameStarted = false;
     private boolean controlsPanelOpen = true;
-    private boolean edgePanelTransitionRunning = false;
-    private int edgePanelTransitionGeneration = 0;
     private String restoredStatusMessage = "";
     private int restoredStatusColor = Color.TRANSPARENT;
-    private int layoutGeneration = 0;
-    private int boardLayoutRefreshGeneration = 0;
-    private int movePreviewGeneration = 0;
-    private int pieceGuideGeneration = 0;
 
     private int pendingUpdateVersionCode = -1;
     private boolean updateDialogVisible = false;
@@ -204,11 +184,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void bindViewsAndActions() {
         disposeScreenPresenters();
-        layoutGeneration++;
-        boardLayoutRefreshGeneration++;
-        movePreviewGeneration++;
-        edgePanelTransitionGeneration++;
-        edgePanelTransitionRunning = false;
         textStatus = findViewById(R.id.text_status);
         textTimer = findViewById(R.id.text_timer);
         textSetupRuleSummary = findViewById(R.id.text_setup_rule_summary);
@@ -220,7 +195,6 @@ public class MainActivity extends AppCompatActivity {
         boardContainer = findViewById(R.id.board_container);
         boardArt = findViewById(R.id.board_art);
         boardOverlay = findViewById(R.id.board_overlay);
-        bindBoardResizeListener();
         controlPanel = findViewById(R.id.control_panel);
         btnToggleInfo = findViewById(R.id.btn_toggle_info);
         btnToggleControls = findViewById(R.id.btn_toggle_controls);
@@ -230,9 +204,47 @@ public class MainActivity extends AppCompatActivity {
                 findViewById(R.id.text_title), game, this::landscapeSpacing, () -> turnDurationMillis);
         waitingArea = findViewById(R.id.waiting_area);
         setupPanel = findViewById(R.id.setup_panel);
+        screenLayout = new GameScreenLayout(this, findViewById(R.id.root_layout), game,
+                new GameScreenLayout.Events() {
+                    public boolean isGameStarted() { return gameStarted; }
+                    public boolean isAnimating() { return isAnimatingMove; }
+                    public boolean areControlsOpen() { return controlsPanelOpen; }
+                    public long turnDuration() { return turnDurationMillis; }
+                    public int currentTeamColor() { return getTeamColor(game.getCurrentTeam()); }
+                    public void clearMovePreviews() { MainActivity.this.clearMovePreviews(); }
+                    public void clearPieceGuides() { MainActivity.this.clearPieceGuides(); }
+                    public void updateResultButtons() { MainActivity.this.updateResultButtons(); }
+                    public void rebuildCurrentWaitingArea() { MainActivity.this.rebuildCurrentWaitingArea(); }
+                    public void resizeLandscapeSummaryRows() { MainActivity.this.resizeLandscapeSummaryRows(); }
+                    public void updateRollHint() { MainActivity.this.updateRollHint(); }
+                    public void refreshBoardAfterPanelLayout() { MainActivity.this.refreshBoardAfterPanelLayout(); }
+                    public void cancelPresentationForResize() { cancelMovePresentation(false); }
+                    public void restoreAfterResize() {
+                        restoreGameScreen(textStatus.getText().toString(), textStatus.getCurrentTextColor());
+                        maybeShowVictory();
+                    }
+                });
+        bindBoardResizeListener();
 
-        pieceViews = new PieceStackView[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
-        waitSpots = new FrameLayout[YutGameEngine.MAX_TEAM_COUNT][YutGameEngine.PIECE_COUNT];
+        boardPresentation = new BoardPresentation(this, findViewById(R.id.root_layout), game,
+                screenLayout, new BoardPresentation.Events() {
+                    public boolean isGameStarted() { return gameStarted; }
+                    public boolean isAnimating() { return isAnimatingMove; }
+                    public boolean reducedMotion() { return reducedMotion; }
+                    public int selectedTeam() { return selectedPreviewTeamId; }
+                    public int selectedPiece() { return selectedPreviewPieceId; }
+                    public int color(int team) { return teamColors[team]; }
+                    public int shape(int team) { return teamShapes[team]; }
+                    public void selectPiece(int team, int piece) { MainActivity.this.selectPiece(team, piece); }
+                    public void commitMove(View source) { runPressAction(source, MainActivity.this::commitSelectedMove); }
+                    public void updateFinishedSummary() { MainActivity.this.updateFinishedSummary(); }
+                    public void onFinishVisibilityChanged() {
+                        if (gameStarted) applyBoardPanelConstraints(findViewById(R.id.root_layout));
+                        scheduleBoardLayoutRefresh();
+                    }
+                    public void playCatchFeedback() { playFeedback(GameFeedback.CATCH); }
+                    public void finishUndoAnimation() { MainActivity.this.finishUndoAnimation(); }
+                });
         createFinishDestination();
 
         createPieceViews();
@@ -244,8 +256,6 @@ public class MainActivity extends AppCompatActivity {
         applyResponsiveSizing();
         applyCompactActionAutoSizing();
         applyFontScaleSizing();
-        timedEndTurnParams = new LinearLayout.LayoutParams((LinearLayout.LayoutParams)
-                findViewById(R.id.btn_end_turn).getLayoutParams());
         createUnlimitedControls();
         bindSafeAreaInsets();
     }
@@ -255,7 +265,7 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         isActivityResumed = true;
         // Leaving the app pauses a physical-board game automatically.
-        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        turnClock.timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         updateTimerView();
         timerHandler.removeCallbacks(timerTick);
         timerHandler.post(timerTick);
@@ -270,6 +280,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         syncTimerToNow();
         isActivityResumed = false;
+        dismissVictoryPresentation();
         cancelMovePresentation(true);
         persistGameState();
         getWindow().getDecorView().setKeepScreenOn(false);
@@ -308,6 +319,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         syncTimerToNow();
+        dismissVictoryPresentation();
         cancelMovePresentation(false);
         String statusMessage = textStatus == null
                 ? ""
@@ -333,6 +345,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         isActivityResumed = false;
+        dismissVictoryPresentation();
         if (teamAppearanceDialog != null) {
             teamAppearanceDialog.setOnDismissListener(null);
             teamAppearanceDialog.dismiss();
@@ -349,24 +362,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void disposeScreenPresenters() {
+        if (screenLayout != null) screenLayout.dispose();
+        if (boardPresentation != null) boardPresentation.dispose();
         if (historyPresenter != null) historyPresenter.dispose();
         if (teamStatusPanel != null) teamStatusPanel.dispose();
     }
 
     private void createPieceViews() {
-        for (int team = 0; team < YutGameEngine.TEAM_COUNT; team++) {
-            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                PieceStackView view = new PieceStackView(this);
-                view.configureAppearance(teamColors[team], teamShapes[team], id + 1);
-                view.setElevation(dp(7));
-                view.setContentDescription(getString(R.string.piece_description, teamName(team), id + 1));
-
-                final int teamIndex = team;
-                final int pieceIndex = id;
-                view.setOnClickListener(v -> selectPiece(teamIndex, pieceIndex));
-                pieceViews[team][id] = view;
-            }
-        }
+        boardPresentation.createPieceViews();
     }
 
     private void bindYutButtons() {
@@ -498,7 +501,7 @@ public class MainActivity extends AppCompatActivity {
     private void maybeShowPendingUpdate() {
         if (pendingUpdateVersionCode <= BuildConfig.VERSION_CODE
                 || updateDialogVisible
-                || timerDialogHoldCount > 0
+                || turnClock.timerDialogHoldCount > 0
                 || isAnimatingMove
                 || !hasWindowFocus()
                 || isFinishing()
@@ -597,7 +600,7 @@ public class MainActivity extends AppCompatActivity {
         savedGameChoicePending = false;
         moveUndoState = null;
         isAnimatingMove = false;
-        isTimerHeldForAnimation = false;
+        turnClock.isTimerHeldForAnimation = false;
         pauseTimer();
         clearSelectedPiece();
         clearMovePreviews();
@@ -608,11 +611,7 @@ public class MainActivity extends AppCompatActivity {
         topPanel.setVisibility(View.GONE);
         boardContainer.setVisibility(View.INVISIBLE);
         controlPanel.setVisibility(View.GONE);
-        unlimitedRolls.setVisibility(View.GONE);
-        unlimitedFooter.setVisibility(View.GONE);
-        unlimitedWaiting.setVisibility(View.GONE);
-        landscapeResults.setVisibility(View.GONE);
-        findViewById(R.id.landscape_control_surface).setVisibility(View.GONE);
+        screenLayout.hideColumns();
         setEdgePanelTabsVisible(false);
         setupPanel.setVisibility(View.VISIBLE);
         setupPanel.setElevation(dp(24));
@@ -667,7 +666,7 @@ public class MainActivity extends AppCompatActivity {
                     savedGameChoiceVisible = false;
                     savedGameChoicePending = false;
                     restoredGameSavedAtEpochMillis = 0L;
-                    timerDialogHoldCount = 0;
+                    turnClock.timerDialogHoldCount = 0;
                     showTeamSetup();
                     maybeShowPendingUpdate();
                 });
@@ -702,11 +701,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void applyTeamAppearance() {
-        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
-            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                pieceViews[team][id].configureAppearance(teamColors[team], teamShapes[team], id + 1);
-            }
-        }
+        boardPresentation.applyTeamAppearance();
     }
 
     private void startGame(int teamCount) {
@@ -728,26 +723,26 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void restoreGameScreen(String statusMessage, int statusColor) {
-        isTimerHeldForAnimation = false;
+        turnClock.isTimerHeldForAnimation = false;
         setupPanel.setVisibility(View.GONE);
         boardContainer.setVisibility(View.VISIBLE);
         setEdgePanelTabsVisible(true);
         resultLayout.removeAllViews();
         buildTeamAreas();
 
-        boardOverlay.post(() -> {
+        boardPresentation.postRestore(() -> {
             for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
                 for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
                     Piece piece = game.getPiece(team, id);
                     if (team >= game.getTeamCount()) {
-                        removeFromParent(pieceViews[team][id]);
+                        boardPresentation.removePiece(team, id);
                     } else if (piece.isFinished) {
                         moveToFinishedArea(team, id);
                     } else if (piece.position == BoardPath.START_NODE) {
                         if (team == game.getCurrentTeam()) {
                             moveToWaitSpot(team, id);
                         } else {
-                            removeFromParent(pieceViews[team][id]);
+                            boardPresentation.removePiece(team, id);
                         }
                     }
                 }
@@ -778,10 +773,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void resetGame() {
+        dismissVictoryPresentation();
+        matchStatistics.reset();
+        victoryCreditsSeen = false;
         bonusTimeBaselineResultId = 0;
         victoryPending = false;
         isAnimatingMove = false;
-        isTimerHeldForAnimation = false;
+        turnClock.isTimerHeldForAnimation = false;
         moveUndoState = null;
         game.reset();
         resultLayout.removeAllViews();
@@ -804,7 +802,7 @@ public class MainActivity extends AppCompatActivity {
                 if (team == game.getCurrentTeam()) {
                     moveToWaitSpot(team, id);
                 } else {
-                    removeFromParent(pieceViews[team][id]);
+                    boardPresentation.removePiece(team, id);
                 }
             }
         }
@@ -822,89 +820,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void createWaitingTeamRow(int team) {
-        boolean vertical = usesVerticalWaitingTray();
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setOrientation(vertical ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                vertical ? LinearLayout.LayoutParams.MATCH_PARENT : dp(48));
-        waitingArea.addView(row, rowParams);
-
-        TextView label = new TextView(this);
-        label.setText(teamName(team));
-        label.setTextColor(getTeamColor(team));
-        label.setTextSize(13);
-        label.setTypeface(Typeface.DEFAULT_BOLD);
-        label.setMaxLines(1);
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                label,
-                10, 13, 1,
-                TypedValue.COMPLEX_UNIT_SP);
-        row.addView(label, new LinearLayout.LayoutParams(
-                vertical ? LinearLayout.LayoutParams.MATCH_PARENT : dp(40),
-                vertical ? dp(32) : LinearLayout.LayoutParams.WRAP_CONTENT));
-        if (vertical) label.setGravity(Gravity.CENTER);
-
-        LinearLayout spots = new LinearLayout(this);
-        spots.setGravity(Gravity.CENTER_VERTICAL);
-        spots.setOrientation(vertical ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
-        row.addView(spots, vertical
-                ? new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
-                : new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f));
-
-        for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-            FrameLayout spot = new FrameLayout(this);
-            spot.setBackgroundResource(R.drawable.shape_wait_spot_touch);
-            spot.setClipChildren(false);
-            spot.setClipToPadding(false);
-            final int pieceId = id;
-            spot.setContentDescription(getString(R.string.waiting_piece_description, teamName(team), id + 1));
-            spot.setClickable(true);
-            spot.setFocusable(true);
-            spot.setOnClickListener(v -> selectPiece(team, pieceId));
-            LinearLayout.LayoutParams spotParams = new LinearLayout.LayoutParams(dp(48), dp(48));
-            int spotMargin = 0;
-            spotParams.setMargins(spotMargin, vertical && id > 0 ? dp(landscapeSpacing()) : 0, spotMargin, 0);
-            spots.addView(spot, spotParams);
-            waitSpots[team][id] = spot;
-        }
+        boardPresentation.createWaitingTeamRow(team);
     }
 
     private void rebuildCurrentWaitingArea() {
-        updateFinishedSummary();
-        waitingArea.removeAllViews();
-        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
-            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                waitSpots[team][id] = null;
-            }
-        }
-
-        if (game.isGameOver()) {
-            return;
-        }
-
-        createWaitingTeamRow(game.getCurrentTeam());
-        syncWaitingPiecesForCurrentTurn();
+        boardPresentation.rebuildCurrentWaitingArea();
     }
 
     private void syncWaitingPiecesForCurrentTurn() {
-        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
-            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                Piece piece = game.getPiece(team, id);
-                if (team >= game.getTeamCount()
-                        || piece.isFinished
-                        || piece.position != BoardPath.START_NODE) {
-                    continue;
-                }
-
-                if (team == game.getCurrentTeam()) {
-                    moveToWaitSpot(team, id);
-                } else {
-                    removeFromParent(pieceViews[team][id]);
-                }
-            }
-        }
+        boardPresentation.syncWaitingPiecesForCurrentTurn();
     }
 
     private void handleYutInput(int steps) {
@@ -926,6 +850,7 @@ public class MainActivity extends AppCompatActivity {
 
         pushUndoState(undoCandidate);
         selectSinglePendingResult();
+        matchStatistics.recordRoll(game.getCurrentTeam(), steps);
         textStatus.setText(getRollStatusMessage(steps, result.message));
         textStatus.setTextColor(getStatusColor());
         if (steps == 4 || steps == 5) {
@@ -975,9 +900,10 @@ public class MainActivity extends AppCompatActivity {
         if ((removedSteps == 4 || removedSteps == 5) && turnDurationMillis > 0L
                 && removedId > bonusTimeBaselineResultId) {
             syncTimerToNow();
-            remainingTurnMillis = Math.max(0L, remainingTurnMillis - BONUS_TURN_MILLIS);
+            turnClock.remainingTurnMillis = Math.max(0L, turnClock.remainingTurnMillis - BONUS_TURN_MILLIS);
             updateTimerView();
         }
+        matchStatistics.undoRoll(game.getCurrentTeam(), removedSteps);
         selectSinglePendingResult();
         textStatus.setText(result.message);
         textStatus.setTextColor(getStatusColor());
@@ -1002,14 +928,16 @@ public class MainActivity extends AppCompatActivity {
         YutGameEngine.SavedState before = game.saveState();
         moveUndoState = state.previous;
         game.restoreState(state.engineState);
+        matchStatistics.restore(state.statistics);
+        victoryCreditsSeen = false;
         victoryPending = false;
         bonusTimeBaselineResultId = state.bonusTimeBaselineResultId;
-        remainingTurnMillis = turnDurationMillis <= 0L
+        turnClock.remainingTurnMillis = turnDurationMillis <= 0L
                 ? 0L
                 : Math.max(0L, state.remainingTurnMillis);
-        isTimerPaused = state.timerPaused;
+        turnClock.isTimerPaused = state.timerPaused;
         timeExpiredNotified = state.timeExpiredNotified;
-        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        turnClock.timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         selectedPreviewTeamId = state.selectedTeamId;
         selectedPreviewPieceId = state.selectedPieceId;
         if (!isValidPreviewSelection(selectedPreviewTeamId, selectedPreviewPieceId)) {
@@ -1249,6 +1177,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void applyMoveResult(YutGameEngine.MoveResult result, String planText) {
         // Commit all game effects before starting disposable presentation work.
+        matchStatistics.recordMove(result);
         updateStatusAfterMove(result);
         addTurnLog(formatMoveLog(result, planText));
         if (result.turnChanged) {
@@ -1258,7 +1187,7 @@ public class MainActivity extends AppCompatActivity {
         }
         victoryPending = result.gameWon;
         isAnimatingMove = true;
-        isTimerHeldForAnimation = true;
+        turnClock.isTimerHeldForAnimation = true;
         setControlsEnabled(false);
         clearSelectedPiece();
         clearMovePreviews(false);
@@ -1275,7 +1204,7 @@ public class MainActivity extends AppCompatActivity {
 
             isAnimatingMove = false;
             setFinishDestinationVisible(false);
-            isTimerHeldForAnimation = false;
+            turnClock.isTimerHeldForAnimation = false;
             renderBoardPiecesNow();
             updateFinishedSummary();
             rebuildCurrentWaitingArea();
@@ -1294,7 +1223,7 @@ public class MainActivity extends AppCompatActivity {
             if (!result.caught) {
                 playFeedback(GameFeedback.MOVE);
             }
-            timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+            turnClock.timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
             updatePieceSelectionStyles(true);
             updateMovePreviews();
 
@@ -1305,28 +1234,14 @@ public class MainActivity extends AppCompatActivity {
 
     private void cancelMovePresentation(boolean redraw) {
         if (!isAnimatingMove) return;
-        // Invalidate callbacks before cancellation can invoke any animator listener.
-        layoutGeneration++;
         isAnimatingMove = false;
         undoAnimating = false;
         queuedUndoCount = 0;
-        ViewGroup undoRoot = findViewById(R.id.root_layout);
-        for (View ghost : undoGhosts) undoRoot.getOverlay().remove(ghost);
-        undoGhosts.clear();
-        for (Animator animator : new ArrayList<>(moveAnimators)) animator.cancel();
-        moveAnimators.clear();
-        clearFinishAnimation();
-        if (pieceViews != null) {
-            for (PieceStackView[] team : pieceViews) {
-                for (PieceStackView piece : team) if (piece != null) piece.animate().cancel();
-            }
-        }
-        isTimerHeldForAnimation = false;
-        setFinishDestinationVisible(false);
-        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        boardPresentation.cancel();
+        turnClock.isTimerHeldForAnimation = false;
+        turnClock.timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         if (redraw && boardOverlay != null && gameStarted) {
             restoreGameScreen(textStatus.getText().toString(), textStatus.getCurrentTextColor());
-
         }
     }
 
@@ -1340,9 +1255,10 @@ public class MainActivity extends AppCompatActivity {
         syncTimerToNow();
         GameStateStore.MoveUndoState state = new GameStateStore.MoveUndoState();
         state.engineState = game.saveState();
+        state.statistics = matchStatistics.snapshot();
         state.bonusTimeBaselineResultId = bonusTimeBaselineResultId;
-        state.remainingTurnMillis = remainingTurnMillis;
-        state.timerPaused = isTimerPaused;
+        state.remainingTurnMillis = turnClock.remainingTurnMillis;
+        state.timerPaused = turnClock.isTimerPaused;
         state.timeExpiredNotified = timeExpiredNotified;
         state.selectedTeamId = selectedPreviewTeamId;
         state.selectedPieceId = selectedPreviewPieceId;
@@ -1393,77 +1309,37 @@ public class MainActivity extends AppCompatActivity {
 
     private void showGameOverDialog(YutGameEngine.MoveResult result) {
         gameOverDialogVisible = true;
-        YutDialogs.showGameOver(
-                this,
-                getString(R.string.victory_title, teamName(result.teamId)),
-                buildGameOverMessage(result),
+        victoryPresentation = new VictoryPresentation(
+                this, game, matchStatistics, teamColors, teamShapes,
+                reducedMotion || victoryCreditsSeen,
                 this::showTeamSetup,
                 this::showTurnLogDialog,
                 () -> {
                     gameOverDialogVisible = false;
                     victoryPending = false;
+                    victoryPresentation = null;
+                    persistGameState();
+                }, () -> {
+                    victoryCreditsSeen = true;
                     persistGameState();
                 });
+        victoryPresentation.show();
+    }
+
+    private void dismissVictoryPresentation() {
+        if (victoryPresentation == null) return;
+        victoryCreditsSeen = true;
+        victoryPresentation.dispose();
+        victoryPresentation = null;
+        gameOverDialogVisible = false;
     }
 
     private void animateMoveResult(YutGameEngine.MoveResult result, Runnable onComplete) {
-        if (reducedMotion || result.animationSegments.isEmpty()) {
-            onComplete.run();
-            return;
-        }
-
-        int animationGeneration = layoutGeneration;
-        boardOverlay.post(() -> {
-            if (animationGeneration == layoutGeneration) {
-                animateMoveSegment(result, 0, onComplete, animationGeneration);
-            }
-        });
+        boardPresentation.animateMoveResult(result, onComplete);
     }
 
     private void animateMoveSegment(YutGameEngine.MoveResult result, int segmentIndex, Runnable onComplete, int animationGeneration) {
-        if (animationGeneration != layoutGeneration) {
-            return;
-        }
-        if (segmentIndex >= result.animationSegments.size()) {
-            onComplete.run();
-            return;
-        }
-
-        YutGameEngine.MoveAnimation segment = result.animationSegments.get(segmentIndex);
-        ArrayList<Integer> boardPath = new ArrayList<>();
-        for (int node : segment.path) {
-            if (node != BoardPath.START_NODE) {
-                boardPath.add(node);
-            }
-        }
-
-        Runnable nextSegment = () -> {
-            if (animationGeneration == layoutGeneration) {
-                animateMoveSegment(result, segmentIndex + 1, onComplete, animationGeneration);
-            }
-        };
-        if (segment.pieceIds.isEmpty() || boardPath.isEmpty()) {
-            for (YutGameEngine.PieceRef caughtPiece : segment.caughtPieces) {
-                moveToWaitSpot(caughtPiece.teamId, caughtPiece.pieceId);
-            }
-            nextSegment.run();
-            return;
-        }
-
-        int representativeId = prepareAnimatedBoardGroup(result.teamId, segment.pieceIds, segment.startNode);
-        PieceStackView movingView = pieceViews[result.teamId][representativeId];
-        animateStackLayout(
-                movingView,
-                1f,
-                segment.pieceIds.size() > 1 ? 130L : 60L,
-                () -> animatePathStep(
-                        result.teamId,
-                        representativeId,
-                        segment,
-                        boardPath,
-                        0,
-                        nextSegment,
-                        animationGeneration));
+        boardPresentation.animateMoveSegment(result, segmentIndex, onComplete, animationGeneration);
     }
 
     private void animatePathStep(
@@ -1474,138 +1350,20 @@ public class MainActivity extends AppCompatActivity {
             int index,
             Runnable onComplete,
             int animationGeneration) {
-        if (animationGeneration != layoutGeneration) {
-            return;
-        }
-        if (index >= path.size()) {
-            int arrivalNode = path.get(path.size() - 1);
-            Runnable showArrival = () -> animateArrivedBoardGroup(
-                    teamId,
-                    pieceId,
-                    segment,
-                    arrivalNode,
-                    onComplete,
-                    animationGeneration);
-            if (segment.caughtPieces.isEmpty()) {
-                showArrival.run();
-            } else {
-                animateCapturedPieces(segment.caughtPieces, showArrival, animationGeneration);
-            }
-            return;
-        }
-
-        int node = path.get(index);
-        if (node == BoardPath.END_NODE) {
-            animateFinishEntry(teamId, pieceId, segment.pieceIds.size(), onComplete, animationGeneration);
-            return;
-        }
-        int duration = Math.max(110, 190 - Math.min(index, 4) * 12);
-        Runnable nextStep = () -> animatePathStep(
-                teamId,
-                pieceId,
-                segment,
-                path,
-                index + 1,
-                onComplete,
-                animationGeneration);
-        PieceStackView pieceView = pieceViews[teamId][pieceId];
-        boardOverlay.releaseAnchor(pieceView);
-        float[] target = getBoardNodePosition(node, getBoardPieceViewSize());
-        pieceView.bringToFront();
-        pieceView.animate()
-                .x(target[0])
-                .y(target[1])
-                .setInterpolator(new AccelerateDecelerateInterpolator())
-                .setDuration(duration)
-                .withEndAction(nextStep)
-                .start();
+        boardPresentation.animatePathStep(teamId, pieceId, segment, path, index, onComplete, animationGeneration);
     }
 
     private void animateFinishEntry(int teamId, int pieceId, int count, Runnable onComplete,
             int animationGeneration) {
-        ViewGroup root = findViewById(R.id.root_layout);
-        PieceStackView source = pieceViews[teamId][pieceId];
-        int[] rootLocation = new int[2];
-        int[] sourceLocation = new int[2];
-        int[] targetLocation = new int[2];
-        root.getLocationOnScreen(rootLocation);
-        source.getLocationOnScreen(sourceLocation);
-        finishDestination.getLocationOnScreen(targetLocation);
-        int size = getBoardPieceViewSize();
-        float startX = sourceLocation[0] - rootLocation[0];
-        float startY = sourceLocation[1] - rootLocation[1];
-        float endX = targetLocation[0] - rootLocation[0] + (finishDestination.getWidth() - size) / 2f;
-        float endY = targetLocation[1] - rootLocation[1] + (finishDestination.getHeight() - size) / 2f;
-
-        // The root overlay carries the piece beyond the board without clipping or changing layout.
-        PieceStackView ghost = new PieceStackView(this);
-        ghost.configureAppearance(teamColors[teamId], teamShapes[teamId], pieceId + 1);
-        ghost.setGroupCount(count);
-        ghost.setCollapseProgress(1f);
-        ghost.setVisualDiameterPx(getBoardPieceSize());
-        ghost.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        ghost.measure(View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY));
-        ghost.layout(0, 0, size, size);
-        ghost.setX(startX);
-        ghost.setY(startY);
-        finishAnimationView = ghost;
-        root.getOverlay().add(ghost);
-        removeFromParent(source);
-
-        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        moveAnimators.add(animator);
-        animator.setDuration(600L);
-        animator.setInterpolator(new android.view.animation.LinearInterpolator());
-        animator.addUpdateListener(value -> {
-            float progress = (float) value.getAnimatedValue();
-            float travel = Math.min(1f, progress / 0.7f);
-            float eased = (float) (0.5 - Math.cos(Math.PI * travel) / 2);
-            ghost.setX(startX + (endX - startX) * eased);
-            ghost.setY(startY + (endY - startY) * eased);
-            float fade = Math.max(0f, (progress - 0.7f) / 0.3f);
-            ghost.setScaleX(1f - fade * 0.45f);
-            ghost.setScaleY(1f - fade * 0.45f);
-            ghost.setAlpha(1f - fade);
-        });
-        animator.addListener(new AnimatorListenerAdapter() {
-            private boolean cancelled;
-            @Override public void onAnimationCancel(Animator animation) { cancelled = true; }
-            @Override public void onAnimationEnd(Animator animation) {
-                moveAnimators.remove(animator);
-                root.getOverlay().remove(ghost);
-                if (finishAnimationView == ghost) finishAnimationView = null;
-                if (!cancelled && animationGeneration == layoutGeneration) onComplete.run();
-            }
-        });
-        animator.start();
+        boardPresentation.animateFinishEntry(teamId, pieceId, count, onComplete, animationGeneration);
     }
 
     private void clearFinishAnimation() {
-        if (finishAnimationView != null) {
-            ViewGroup root = findViewById(R.id.root_layout);
-            root.getOverlay().remove(finishAnimationView);
-            finishAnimationView = null;
-        }
+        boardPresentation.clearFinishAnimation();
     }
 
     private int prepareAnimatedBoardGroup(int teamId, List<Integer> pieceIds, int logicalNode) {
-        int representativeId = getRepresentativePieceId(pieceIds);
-        for (int id : pieceIds) {
-            if (id != representativeId) {
-                removeFromParent(pieceViews[teamId][id]);
-            }
-        }
-
-        PieceStackView representative = pieceViews[teamId][representativeId];
-        resetPieceViewTransform(representative);
-        moveViewToParent(representative, boardOverlay);
-        configureBoardGroupAtNode(representative, teamId, representativeId, pieceIds.size(), logicalNode);
-        int size = getBoardPieceViewSize();
-        representative.setLayoutParams(new FrameLayout.LayoutParams(size, size));
-        placePieceOnBoardNode(representative, logicalNode, size);
-        representative.bringToFront();
-        return representativeId;
+        return boardPresentation.prepareAnimatedBoardGroup(teamId, pieceIds, logicalNode);
     }
 
     private void animateArrivedBoardGroup(
@@ -1615,113 +1373,14 @@ public class MainActivity extends AppCompatActivity {
             int logicalNode,
             Runnable onComplete,
             int animationGeneration) {
-        if (animationGeneration != layoutGeneration) {
-            return;
-        }
-        List<Integer> arrivedIds = segment.arrivedPieceIds.isEmpty()
-                ? segment.pieceIds
-                : segment.arrivedPieceIds;
-        int representativeId = getRepresentativePieceId(arrivedIds);
-        PieceStackView representative = pieceViews[teamId][representativeId];
-        for (int id : arrivedIds) {
-            if (id != representativeId) {
-                removeFromParent(pieceViews[teamId][id]);
-            }
-        }
-        if (movingPieceId != representativeId) {
-            removeFromParent(pieceViews[teamId][movingPieceId]);
-        }
-
-        resetPieceViewTransform(representative);
-        moveViewToParent(representative, boardOverlay);
-        configureBoardGroupAtNode(representative, teamId, representativeId, arrivedIds.size(), logicalNode);
-        int size = getBoardPieceViewSize();
-        representative.setLayoutParams(new FrameLayout.LayoutParams(size, size));
-        placePieceOnBoardNode(representative, logicalNode, size);
-        representative.setCollapseProgress(1f);
-        representative.bringToFront();
-
-        animateStackLayout(representative, 0f, arrivedIds.size() > 1 ? 160L : 70L, () -> {
-            ArrayList<Integer> animatedPiece = new ArrayList<>();
-            animatedPiece.add(representativeId);
-            bounceArrivedPieces(teamId, animatedPiece, () -> {
-                if (animationGeneration == layoutGeneration) {
-                    onComplete.run();
-                }
-            });
-        });
+        boardPresentation.animateArrivedBoardGroup(teamId, movingPieceId, segment, logicalNode, onComplete, animationGeneration);
     }
 
     private void animateCapturedPieces(
             List<YutGameEngine.PieceRef> caughtPieces,
             Runnable onComplete,
             int animationGeneration) {
-        int capturedTeamCount = 0;
-        for (int team = 0; team < game.getTeamCount(); team++) {
-            for (YutGameEngine.PieceRef caughtPiece : caughtPieces) {
-                if (caughtPiece.teamId == team) {
-                    capturedTeamCount++;
-                    break;
-                }
-            }
-        }
-        if (capturedTeamCount == 0) {
-            onComplete.run();
-            return;
-        }
-
-        playFeedback(GameFeedback.CATCH);
-        int[] remainingTeams = {capturedTeamCount};
-        for (int team = 0; team < game.getTeamCount(); team++) {
-            ArrayList<Integer> teamPieceIds = new ArrayList<>();
-            for (YutGameEngine.PieceRef caughtPiece : caughtPieces) {
-                if (caughtPiece.teamId == team) {
-                    teamPieceIds.add(caughtPiece.pieceId);
-                }
-            }
-            if (teamPieceIds.isEmpty()) {
-                continue;
-            }
-
-            int capturedTeam = team;
-            int representativeId = getRepresentativePieceId(teamPieceIds);
-            PieceStackView capturedView = pieceViews[capturedTeam][representativeId];
-            Runnable finishTeam = () -> {
-                for (int id : teamPieceIds) {
-                    moveToWaitSpot(capturedTeam, id);
-                }
-                remainingTeams[0]--;
-                if (remainingTeams[0] == 0 && animationGeneration == layoutGeneration) {
-                    onComplete.run();
-                }
-            };
-            if (capturedView.getParent() != boardOverlay) {
-                finishTeam.run();
-                continue;
-            }
-
-            configureBoardGroupAppearance(
-                    capturedView,
-                    capturedTeam,
-                    representativeId,
-                    teamPieceIds.size());
-            capturedView.bringToFront();
-            animateStackLayout(capturedView, 1f, 100L, () -> {
-                if (animationGeneration != layoutGeneration) return;
-                boardOverlay.releaseAnchor(capturedView);
-                float[] target = getBoardNodePosition(BoardPath.START_NODE, getBoardPieceViewSize());
-                capturedView.animate()
-                        .x(target[0])
-                        .y(target[1])
-                        .scaleX(0.62f)
-                        .scaleY(0.62f)
-                        .alpha(0f)
-                        .setInterpolator(new AccelerateDecelerateInterpolator())
-                        .setDuration(300L)
-                        .withEndAction(finishTeam)
-                        .start();
-            });
-        }
+        boardPresentation.animateCapturedPieces(caughtPieces, onComplete, animationGeneration);
     }
 
     private void animateStackLayout(
@@ -1729,83 +1388,19 @@ public class MainActivity extends AppCompatActivity {
             float targetProgress,
             long duration,
             Runnable onComplete) {
-        float startProgress = view.getCollapseProgress();
-        if (Math.abs(startProgress - targetProgress) < 0.001f) {
-            onComplete.run();
-            return;
-        }
-
-        ValueAnimator animator = ValueAnimator.ofFloat(startProgress, targetProgress);
-        moveAnimators.add(animator);
-        animator.setDuration(duration);
-        animator.setInterpolator(new AccelerateDecelerateInterpolator());
-        animator.addUpdateListener(valueAnimator ->
-                view.setCollapseProgress((float) valueAnimator.getAnimatedValue()));
-        animator.addListener(new AnimatorListenerAdapter() {
-            private boolean cancelled;
-
-            @Override
-            public void onAnimationCancel(Animator animation) {
-                cancelled = true;
-            }
-
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                moveAnimators.remove(animator);
-                if (!cancelled) {
-                    view.setCollapseProgress(targetProgress);
-                    onComplete.run();
-                }
-            }
-        });
-        animator.start();
+        boardPresentation.animateStackLayout(view, targetProgress, duration, onComplete);
     }
 
     private void renderBoardPiecesNow() {
-        for (int team = 0; team < game.getTeamCount(); team++) {
-            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                Piece piece = game.getPiece(team, id);
-                if (piece.isFinished
-                        || piece.position == BoardPath.START_NODE
-                        || piece.position == BoardPath.END_NODE) {
-                    continue;
-                }
-
-                ArrayList<Integer> groupIds = getBoardGroupIds(team, piece.position);
-                int representativeId = getRepresentativePieceId(groupIds);
-                if (id != representativeId) {
-                    removeFromParent(pieceViews[team][id]);
-                    continue;
-                }
-
-                PieceStackView representative = pieceViews[team][representativeId];
-                resetPieceViewTransform(representative);
-                moveViewToParent(representative, boardOverlay);
-                configureBoardGroupAtNode(representative, team, representativeId, groupIds.size(), piece.position);
-                int size = getBoardPieceViewSize();
-                representative.setLayoutParams(new FrameLayout.LayoutParams(size, size));
-                placePieceOnBoardNode(representative, piece.position, size);
-            }
-        }
+        boardPresentation.renderBoardPiecesNow();
     }
 
     private ArrayList<Integer> getBoardGroupIds(int teamId, int logicalNode) {
-        ArrayList<Integer> ids = new ArrayList<>();
-        for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-            Piece piece = game.getPiece(teamId, id);
-            if (!piece.isFinished && game.isSameBoardSpot(piece.position, logicalNode)) {
-                ids.add(id);
-            }
-        }
-        return ids;
+        return boardPresentation.getBoardGroupIds(teamId, logicalNode);
     }
 
     private int getRepresentativePieceId(List<Integer> pieceIds) {
-        int representativeId = pieceIds.get(0);
-        for (int id : pieceIds) {
-            representativeId = Math.min(representativeId, id);
-        }
-        return representativeId;
+        return boardPresentation.getRepresentativePieceId(pieceIds);
     }
 
     private void normalizeSelectedBoardPiece() {
@@ -1826,205 +1421,59 @@ public class MainActivity extends AppCompatActivity {
             int pieceId,
             int groupCount,
             int logicalNode) {
-        configureBoardGroupAppearance(view, teamId, pieceId, groupCount);
-        int spotIndex = logicalNode == BoardPath.START_NODE
-                ? BoardGeometry.START_SPOT
-                : game.visualSpotFor(logicalNode);
-        view.setArrangement(BoardGeometry.stackArrangementForSpot(spotIndex));
+        boardPresentation.configureBoardGroupAtNode(view, teamId, pieceId, groupCount, logicalNode);
     }
 
     private void configureBoardGroupAppearance(PieceStackView view, int teamId, int pieceId, int groupCount) {
-        view.setVisibility(View.VISIBLE);
-        view.setGroupCount(groupCount);
-        view.setVisualDiameterPx(getBoardPieceSize());
-        view.setCollapseProgress(0f);
-        view.setElevation(dp(groupCount > 1 ? 9 : 7));
-        view.setContentDescription(groupCount > 1
-                ? getString(R.string.grouped_piece_description, teamName(teamId), groupCount)
-                : getString(R.string.piece_description, teamName(teamId), pieceId + 1));
+        boardPresentation.configureBoardGroupAppearance(view, teamId, pieceId, groupCount);
     }
 
     private void restorePieceIdentity(PieceStackView view, int teamId, int pieceId) {
-        view.setVisibility(View.VISIBLE);
-        view.setGroupCount(1);
-        view.setArrangement(PieceStackLayout.SPACIOUS);
-        view.setVisualDiameterPx(dp(36));
-        view.setCollapseProgress(0f);
-        view.setElevation(dp(7));
-        view.setContentDescription(getString(R.string.piece_description, teamName(teamId), pieceId + 1));
+        boardPresentation.restorePieceIdentity(view, teamId, pieceId);
     }
 
     private void placePieceOnBoardNode(View pieceView, int logicalNode, int size) {
-        boardOverlay.anchor(pieceView, logicalNode == BoardPath.START_NODE
-                ? BoardGeometry.START_SPOT : game.visualSpotFor(logicalNode));
+        boardPresentation.placePieceOnBoardNode(pieceView, logicalNode, size);
     }
 
     private float[] getBoardNodePosition(int logicalNode, int size) {
-        int spotIndex = logicalNode == BoardPath.START_NODE
-                ? BoardGeometry.START_SPOT
-                : game.visualSpotFor(logicalNode);
-        if (spotIndex < 0 || spotIndex >= BoardGeometry.POINTS.length) {
-            spotIndex = BoardGeometry.START_SPOT;
-        }
-        float[] center = getBoardSpotCenter(spotIndex);
-        return new float[]{center[0] - (size / 2f), center[1] - (size / 2f)};
+        return boardPresentation.getBoardNodePosition(logicalNode, size);
     }
 
     private float[] getBoardSpotCenter(int spotIndex) {
-        return boardOverlay.centerForSpot(spotIndex);
+        return boardPresentation.getBoardSpotCenter(spotIndex);
     }
 
     private void createFinishDestination() {
-        finishDestination = new TextView(this);
-        finishDestination.setId(R.id.finish_destination);
-        finishDestination.setText(R.string.finish_destination);
-        finishDestination.setContentDescription(getString(R.string.finish_destination_description));
-        finishDestination.setGravity(Gravity.CENTER);
-        finishDestination.setTextColor(getResources().getColor(R.color.text_primary));
-        finishDestination.setTextSize(14);
-        finishDestination.setTypeface(Typeface.DEFAULT_BOLD);
-        GradientDrawable tile = new GradientDrawable();
-        tile.setColor(getResources().getColor(R.color.accent_gold_soft));
-        tile.setCornerRadius(dp(12));
-        tile.setStroke(dp(2), getResources().getColor(R.color.board_direction));
-        finishDestination.setBackground(tile);
-        finishDestination.setElevation(dp(14));
-        finishDestination.setVisibility(View.GONE);
-        finishDestination.setClickable(true);
-        finishDestination.setFocusable(true);
-        finishDestination.setOnClickListener(v -> {
-            if (selectedPreviewTeamId == game.getCurrentTeam() && selectedPreviewPieceId >= 0) {
-                YutGameEngine.MovePreview preview = game.previewMove(selectedPreviewTeamId, selectedPreviewPieceId);
-                if (preview.available && preview.finishes) runPressAction(v, this::commitSelectedMove);
-            }
-        });
-        ConstraintLayout root = findViewById(R.id.root_layout);
-        root.addView(finishDestination, new ConstraintLayout.LayoutParams(dp(64), dp(48)));
+        boardPresentation.createFinishDestination();
     }
 
     private void setFinishDestinationVisible(boolean visible) {
-        if (finishDestination == null) return;
-        int visibility = visible ? View.VISIBLE : View.GONE;
-        if (finishDestination.getVisibility() == visibility) return;
-        finishDestination.setVisibility(visibility);
-        if (gameStarted) applyBoardPanelConstraints(findViewById(R.id.root_layout));
-        scheduleBoardLayoutRefresh();
+        boardPresentation.setFinishDestinationVisible(visible);
     }
 
     private void updateMovePreviews() {
-        // Keep the target and board geometry stable until the finish animation ends.
-        if (isAnimatingMove) return;
-        clearMovePreviews(false);
-        if (isAnimatingMove || game.getSelectedSteps().isEmpty() || game.isGameOver()
-                || selectedPreviewTeamId != game.getCurrentTeam() || selectedPreviewPieceId == -1) {
-            setFinishDestinationVisible(false);
-            return;
-        }
-        YutGameEngine.MovePreview preview = game.previewMove(selectedPreviewTeamId, selectedPreviewPieceId);
-        setFinishDestinationVisible(preview.available && preview.finishes);
-        if (!preview.available || preview.finishes) return;
-        int previewGeneration = movePreviewGeneration;
-        int activeLayoutGeneration = layoutGeneration;
-        int spotIndex = preview.targetNode == BoardPath.START_NODE
-                ? BoardGeometry.START_SPOT : game.visualSpotFor(preview.targetNode);
-        boardOverlay.post(() -> {
-            if (previewGeneration != movePreviewGeneration || activeLayoutGeneration != layoutGeneration
-                    || isAnimatingMove || game.isGameOver()) return;
-            if (spotIndex >= 0 && spotIndex < BoardGeometry.POINTS.length) addPreviewGlow(spotIndex);
-        });
+        boardPresentation.updateMovePreviews();
     }
 
     private void addPreviewGlow(int spotIndex) {
-        int size = Math.max(dp(48), getBoardPieceSize() + dp(10));
-        int ringSize = size + dp(12);
-
-        View ring = new View(this);
-        ring.setBackground(createPreviewRingDrawable());
-        ring.setElevation(dp(6));
-        ring.setClickable(false);
-        ring.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        boardOverlay.addView(ring, new FrameLayout.LayoutParams(ringSize, ringSize));
-        placeOverlayAtSpot(ring, spotIndex, ringSize);
-        previewViews.add(ring);
-
-        ImageView glow = new ImageView(this);
-        glow.setImageResource(R.drawable.ic_destination_arrow);
-        glow.setColorFilter(getResources().getColor(R.color.text_primary));
-        int arrowPadding = Math.max(dp(10), size / 4);
-        glow.setPadding(arrowPadding, arrowPadding, arrowPadding, arrowPadding);
-        glow.setBackground(createPreviewDrawable());
-        glow.setElevation(dp(14));
-        glow.setClickable(true);
-        glow.setFocusable(true);
-        glow.setContentDescription(getString(R.string.destination_description));
-        glow.setOnClickListener(v -> runPressAction(v, this::commitSelectedMove));
-        boardOverlay.addView(glow, new FrameLayout.LayoutParams(size, size));
-        placeOverlayAtSpot(glow, spotIndex, size);
-        previewViews.add(glow);
-
-        DecelerateInterpolator interpolator = new DecelerateInterpolator();
-        ring.setAlpha(0f);
-        ring.setScaleX(0.62f);
-        ring.setScaleY(0.62f);
-        ring.animate()
-                .alpha(0.72f)
-                .scaleX(1.08f)
-                .scaleY(1.08f)
-                .setInterpolator(interpolator)
-                .setDuration(260)
-                .withEndAction(() -> ring.animate()
-                        .alpha(0.46f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(180)
-                        .start())
-                .start();
-
-        glow.setAlpha(0.35f);
-        glow.setScaleX(0.78f);
-        glow.setScaleY(0.78f);
-        glow.animate()
-                .alpha(1f)
-                .scaleX(1.08f)
-                .scaleY(1.08f)
-                .setInterpolator(interpolator)
-                .setDuration(190)
-                .withEndAction(() -> glow.animate().scaleX(1f).scaleY(1f).setDuration(130).start())
-                .start();
+        boardPresentation.addPreviewGlow(spotIndex);
     }
 
     private void placeOverlayAtSpot(View view, int spotIndex, int size) {
-        boardOverlay.anchor(view, spotIndex);
+        boardPresentation.placeOverlayAtSpot(view, spotIndex, size);
     }
 
     private void positionBoardChild(View view, float left, float top) {
-        ViewGroup.LayoutParams currentParams = view.getLayoutParams();
-        if (!(currentParams instanceof FrameLayout.LayoutParams)) {
-            return;
-        }
-        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) currentParams;
-        params.gravity = Gravity.TOP | Gravity.START;
-        params.leftMargin = Math.round(left);
-        params.topMargin = Math.round(top);
-        view.setTranslationX(0f);
-        view.setTranslationY(0f);
-        view.setLayoutParams(params);
+        boardPresentation.positionBoardChild(view, left, top);
     }
 
     private void clearMovePreviews() {
-        clearMovePreviews(true);
+        boardPresentation.clearMovePreviews();
     }
 
     private void clearMovePreviews(boolean hideFinish) {
-        if (hideFinish) setFinishDestinationVisible(false);
-        movePreviewGeneration++;
-        for (View previewView : previewViews) {
-            ViewGroup parent = (ViewGroup) previewView.getParent();
-            if (parent != null) {
-                parent.removeView(previewView);
-            }
-        }
-        previewViews.clear();
+        boardPresentation.clearMovePreviews(hideFinish);
     }
 
     private void clearSelectedPiece() {
@@ -2034,242 +1483,66 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updatePieceSelectionStyles() {
-        updatePieceSelectionStyles(false);
+        boardPresentation.updatePieceSelectionStyles();
     }
 
     private void updatePieceSelectionStyles(boolean animateGuidance) {
-        if (pieceViews == null) {
-            return;
-        }
-
-        clearPieceGuides();
-        boolean showGuidance = shouldShowPieceGuidance();
-        int currentTeam = game.getCurrentTeam();
-        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
-            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                PieceStackView pieceView = pieceViews[team][id];
-                pieceView.animate().cancel();
-                boolean selected = team == selectedPreviewTeamId && id == selectedPreviewPieceId;
-                boolean legal = showGuidance
-                        && team == currentTeam
-                        && isPieceEligibleForGuidance(team, id);
-                float scale = selected ? 1.12f : legal && !animateGuidance ? 1.03f : 1f;
-                pieceView.setScaleX(scale);
-                pieceView.setScaleY(scale);
-                pieceView.setAlpha(showGuidance
-                        && team == currentTeam
-                        && pieceView.getParent() != null
-                        && !legal ? 0.5f : 1f);
-                pieceView.setElevation(dp(selected ? 10 : 7));
-            }
-        }
-
-        if (!showGuidance) {
-            return;
-        }
-
-        int guidanceGeneration = pieceGuideGeneration;
-        boardOverlay.post(() -> {
-            if (guidanceGeneration != pieceGuideGeneration || !shouldShowPieceGuidance()) {
-                return;
-            }
-            addPieceGuides(animateGuidance && !reducedMotion);
-        });
+        boardPresentation.updatePieceSelectionStyles(animateGuidance);
     }
 
     private boolean shouldShowPieceGuidance() {
-        return gameStarted
-                && !isAnimatingMove
-                && !game.isGameOver()
-                && !game.getSelectedSteps().isEmpty()
-                && selectedPreviewTeamId == -1
-                && selectedPreviewPieceId == -1;
+        return boardPresentation.shouldShowPieceGuidance();
     }
 
     private boolean isPieceEligibleForGuidance(int teamId, int pieceId) {
-        if (teamId != game.getCurrentTeam()) {
-            return false;
-        }
-        PieceStackView pieceView = pieceViews[teamId][pieceId];
-        if (pieceView.getParent() == null || game.getPiece(teamId, pieceId).isFinished) {
-            return false;
-        }
-        return game.previewMove(teamId, pieceId).available;
+        return boardPresentation.isPieceEligibleForGuidance(teamId, pieceId);
     }
 
     private void addPieceGuides(boolean animateGuidance) {
-        int teamId = game.getCurrentTeam();
-        for (int pieceId = 0; pieceId < YutGameEngine.PIECE_COUNT; pieceId++) {
-            if (!isPieceEligibleForGuidance(teamId, pieceId)) {
-                continue;
-            }
-
-            PieceStackView pieceView = pieceViews[teamId][pieceId];
-            ViewGroup parent = (ViewGroup) pieceView.getParent();
-            View guide = new View(this);
-            guide.setBackground(createPieceGuideDrawable(teamId));
-            guide.setTag("piece_guide_" + teamId + "_" + pieceId);
-
-            if (parent == boardOverlay) {
-                int guideSize = Math.max(dp(52), getBoardPieceViewSize() + dp(4));
-                guide.setElevation(dp(6));
-                guide.setClickable(true);
-                guide.setFocusable(true);
-                guide.setContentDescription(getString(
-                        R.string.selectable_piece_description,
-                        teamName(teamId),
-                        pieceId + 1));
-                final int selectedPieceId = pieceId;
-                guide.setOnClickListener(v -> selectPiece(teamId, selectedPieceId));
-                boardOverlay.addView(guide, new FrameLayout.LayoutParams(guideSize, guideSize));
-                placePieceGuideOnBoard(guide, game.getPiece(teamId, pieceId).position, guideSize);
-            } else if (parent instanceof FrameLayout) {
-                guide.setClickable(false);
-                guide.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-                ((FrameLayout) parent).addView(
-                        guide,
-                        0,
-                        new FrameLayout.LayoutParams(
-                                FrameLayout.LayoutParams.MATCH_PARENT,
-                                FrameLayout.LayoutParams.MATCH_PARENT,
-                                Gravity.CENTER));
-                pieceView.bringToFront();
-            } else {
-                continue;
-            }
-
-            pieceGuideViews.add(guide);
-            animatePieceGuide(guide, pieceView, animateGuidance);
-        }
+        boardPresentation.addPieceGuides(animateGuidance);
     }
 
     private void placePieceGuideOnBoard(View guide, int logicalNode, int size) {
-        placePieceOnBoardNode(guide, logicalNode, size);
+        boardPresentation.placePieceGuideOnBoard(guide, logicalNode, size);
     }
 
     private void animatePieceGuide(View guide, View pieceView, boolean animateGuidance) {
-        if (!animateGuidance) {
-            guide.setAlpha(0.58f);
-            guide.setScaleX(1f);
-            guide.setScaleY(1f);
-            pieceView.setScaleX(1.03f);
-            pieceView.setScaleY(1.03f);
-            return;
-        }
-
-        guide.setAlpha(0f);
-        guide.setScaleX(0.72f);
-        guide.setScaleY(0.72f);
-        guide.animate()
-                .alpha(0.66f)
-                .scaleX(1.06f)
-                .scaleY(1.06f)
-                .setInterpolator(new DecelerateInterpolator())
-                .setDuration(230)
-                .withEndAction(() -> guide.animate()
-                        .alpha(0.58f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(160)
-                        .start())
-                .start();
-        pieceView.setScaleX(0.96f);
-        pieceView.setScaleY(0.96f);
-        pieceView.animate()
-                .scaleX(1.1f)
-                .scaleY(1.1f)
-                .setDuration(190)
-                .withEndAction(() -> pieceView.animate()
-                        .scaleX(1.03f)
-                        .scaleY(1.03f)
-                        .setDuration(140)
-                        .start())
-                .start();
+        boardPresentation.animatePieceGuide(guide, pieceView, animateGuidance);
     }
 
     private void clearPieceGuides() {
-        pieceGuideGeneration++;
-        for (View guide : pieceGuideViews) {
-            guide.animate().cancel();
-            ViewGroup parent = (ViewGroup) guide.getParent();
-            if (parent != null) {
-                parent.removeView(guide);
-            }
-        }
-        pieceGuideViews.clear();
+        boardPresentation.clearPieceGuides();
     }
 
     private void moveToWaitSpot(int teamId, int pieceId) {
-        PieceStackView pieceView = pieceViews[teamId][pieceId];
-        FrameLayout waitSpot = waitSpots[teamId][pieceId];
-        if (waitSpot == null) {
-            removeFromParent(pieceView);
-            return;
-        }
-        resetPieceViewTransform(pieceView);
-        restorePieceIdentity(pieceView, teamId, pieceId);
-        moveViewToParent(pieceView, waitSpot);
-
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(dp(36), dp(36), Gravity.CENTER);
-        pieceView.setLayoutParams(params);
-        resetPieceViewTransform(pieceView);
+        boardPresentation.moveToWaitSpot(teamId, pieceId);
     }
 
     private void moveToFinishedArea(int teamId, int pieceId) {
-        PieceStackView pieceView = pieceViews[teamId][pieceId];
-        resetPieceViewTransform(pieceView);
-        removeFromParent(pieceView);
-        updateFinishedSummary();
+        boardPresentation.moveToFinishedArea(teamId, pieceId);
     }
 
     private void moveViewToParent(View view, ViewGroup newParent) {
-        ViewGroup oldParent = (ViewGroup) view.getParent();
-        if (oldParent == newParent) {
-            return;
-        }
-        if (oldParent != null) {
-            oldParent.removeView(view);
-        }
-        newParent.addView(view);
+        boardPresentation.moveViewToParent(view, newParent);
     }
 
     private GradientDrawable createPreviewDrawable() {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.OVAL);
-        drawable.setColor(0xEAF8C74E);
-        drawable.setStroke(dp(2), 0xFFFFFFFF);
-        return drawable;
+        return boardPresentation.createPreviewDrawable();
     }
 
     private GradientDrawable createPreviewRingDrawable() {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.OVAL);
-        drawable.setColor(0x18F8C74E);
-        drawable.setStroke(dp(3), 0xDDF8C74E);
-        return drawable;
+        return boardPresentation.createPreviewRingDrawable();
     }
 
     private GradientDrawable createPieceGuideDrawable(int teamId) {
-        int teamColor = getTeamColor(teamId);
-        int guideColor = Color.argb(
-                220,
-                Color.red(teamColor),
-                Color.green(teamColor),
-                Color.blue(teamColor));
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.OVAL);
-        drawable.setColor(0x12FFFFFF);
-        drawable.setStroke(dp(2), guideColor);
-        return drawable;
-
+        return boardPresentation.createPieceGuideDrawable(teamId);
     }
     private int getBoardPieceSize() {
-        // Use the device's stable size class, not a transient board measurement during rotation.
-        return dp(usesCompactWaitingTray() ? 36 : 44);
+        return boardPresentation.getBoardPieceSize();
     }
 
     private int getBoardPieceViewSize() {
-        return Math.max(dp(48), getBoardPieceSize() + dp(10));
+        return boardPresentation.getBoardPieceViewSize();
     }
 
     private int getStatusColor() {
@@ -2281,50 +1554,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean hasEdgePanels() {
-        return btnToggleInfo != null && btnToggleControls != null;
+        return screenLayout.hasEdgePanels();
     }
 
     private void bindBoardResizeListener() {
-        View.OnLayoutChangeListener listener = (view, left, top, right, bottom,
-                oldLeft, oldTop, oldRight, oldBottom) -> {
-            int width = right - left;
-            int height = bottom - top;
-            int oldWidth = oldRight - oldLeft;
-            int oldHeight = oldBottom - oldTop;
-            if (width > 0 && height > 0 && (width != oldWidth || height != oldHeight)) {
-                if (isAnimatingMove) {
-                    cancelMovePresentation(false);
-                    boardOverlay.post(() -> {
-                        if (gameStarted) {
-                            restoreGameScreen(textStatus.getText().toString(), textStatus.getCurrentTextColor());
-
-                            maybeShowVictory();
-                        }
-                    });
-                }
-                scheduleBoardLayoutRefresh();
-            }
-        };
-        boardArt.addOnLayoutChangeListener(listener);
-        boardOverlay.addOnLayoutChangeListener(listener);
+        screenLayout.bindBoardResizeListener();
     }
 
     private void scheduleBoardLayoutRefresh() {
-        if (boardOverlay == null) {
-            return;
-        }
-        int refreshGeneration = ++boardLayoutRefreshGeneration;
-        int activeLayoutGeneration = layoutGeneration;
-        FrameLayout scheduledOverlay = boardOverlay;
-        scheduledOverlay.postOnAnimation(() -> {
-            if (refreshGeneration != boardLayoutRefreshGeneration
-                    || activeLayoutGeneration != layoutGeneration
-                    || scheduledOverlay != boardOverlay
-                    || edgePanelTransitionRunning) {
-                return;
-            }
-            refreshBoardAfterPanelLayout();
-        });
+        screenLayout.scheduleBoardLayoutRefresh();
     }
 
     private void prepareEdgePanels(boolean resetToDefault) {
@@ -2339,130 +1577,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setEdgePanelTabsVisible(boolean visible) {
-        if (!hasEdgePanels()) {
-            return;
-        }
-        int visibility = visible ? View.VISIBLE : View.GONE;
-        btnToggleInfo.setVisibility(View.GONE);
-        btnToggleControls.setVisibility(usesLandscapeControls() ? View.GONE : visibility);
+        screenLayout.setEdgePanelTabsVisible(visible);
     }
 
     private void applyEdgePanelState(boolean animate) {
-        if (!hasEdgePanels()) {
-            return;
-        }
-
-        ViewGroup root = findViewById(R.id.root_layout);
-        TransitionManager.endTransitions(root);
-        int transitionGeneration = ++edgePanelTransitionGeneration;
-        edgePanelTransitionRunning = animate;
-
-        clearMovePreviews();
-        clearPieceGuides();
-        if (animate) {
-            AutoTransition transition = new AutoTransition();
-            transition.setDuration(220L);
-            transition.setInterpolator(new AccelerateDecelerateInterpolator());
-            TransitionManager.beginDelayedTransition(root, transition);
-        }
-
-        topPanel.setTranslationX(0f);
-        topPanel.setTranslationY(0f);
-        controlPanel.setTranslationX(0f);
-        controlPanel.setTranslationY(0f);
-        btnToggleInfo.setTranslationX(0f);
-        btnToggleInfo.setTranslationY(0f);
-        btnToggleControls.setTranslationX(0f);
-        btnToggleControls.setTranslationY(0f);
-
-        topPanel.setVisibility(View.VISIBLE);
-        controlPanel.setVisibility(!usesLandscapeControls() && controlsPanelOpen ? View.VISIBLE : View.GONE);
-        btnToggleInfo.setVisibility(View.GONE);
-        btnToggleControls.setVisibility(usesLandscapeControls() ? View.GONE : View.VISIBLE);
-        applyBoardPanelConstraints(root);
-        updateDrawerTabLabel(
-                (TextView) btnToggleControls,
-                getString(controlsPanelOpen ? R.string.drawer_close : R.string.input));
-        btnToggleControls.setSelected(controlsPanelOpen);
-
-        topPanel.bringToFront();
-        controlPanel.bringToFront();
-        btnToggleInfo.bringToFront();
-        btnToggleControls.bringToFront();
-        setupPanel.bringToFront();
-
-        long refreshDelay = animate ? 240L : 0L;
-        boardContainer.postDelayed(() -> {
-            if (transitionGeneration != edgePanelTransitionGeneration) {
-                return;
-            }
-            edgePanelTransitionRunning = false;
-            refreshBoardAfterPanelLayout();
-        }, refreshDelay);
+        screenLayout.applyEdgePanelState(animate);
     }
 
     private void applyBoardPanelConstraints(ViewGroup root) {
-        if (!(root instanceof ConstraintLayout)) return;
-        if (usesLandscapeControls()) {
-            applyUnlimitedBoardConstraints((ConstraintLayout) root);
-            return;
-        }
-        ConstraintSet constraints = new ConstraintSet();
-        constraints.clone((ConstraintLayout) root);
-        boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-        clearPanelTabConstraints(constraints, R.id.btn_toggle_info);
-        clearPanelTabConstraints(constraints, R.id.btn_toggle_controls);
-        clearPanelTabConstraints(constraints, R.id.finish_destination);
-        constraints.setVisibility(R.id.btn_toggle_info, View.GONE);
-        constraints.setVisibility(R.id.top_panel, View.VISIBLE);
-        int topId = landscape ? ConstraintSet.PARENT_ID : R.id.top_panel;
-        int topSide = landscape ? ConstraintSet.TOP : ConstraintSet.BOTTOM;
-        int bottomId = landscape ? ConstraintSet.PARENT_ID : R.id.btn_toggle_controls;
-        int bottomSide = landscape ? ConstraintSet.BOTTOM : ConstraintSet.TOP;
-        if (landscape) {
-            constraints.connect(R.id.btn_toggle_controls, ConstraintSet.END, R.id.control_panel, ConstraintSet.START);
-            centerTabVertically(constraints, R.id.btn_toggle_controls);
-            constraints.connect(R.id.board_container, ConstraintSet.START, R.id.top_panel, ConstraintSet.END, dp(4));
-            constraints.connect(R.id.board_container, ConstraintSet.END, R.id.btn_toggle_controls, ConstraintSet.START, dp(4));
-        } else {
-            constraints.connect(R.id.board_container, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START);
-            constraints.connect(R.id.board_container, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
-            constraints.connect(R.id.btn_toggle_controls, ConstraintSet.BOTTOM, R.id.control_panel, ConstraintSet.TOP);
-            centerTabHorizontally(constraints, R.id.btn_toggle_controls);
-        }
-        // Keep the temporary finish tile immediately below the board, outside its touch layer.
-        constraints.createVerticalChain(topId, topSide, bottomId, bottomSide,
-                new int[]{R.id.board_container, R.id.finish_destination}, null, ConstraintSet.CHAIN_PACKED);
-        constraints.connect(R.id.finish_destination, ConstraintSet.END, R.id.board_container, ConstraintSet.END);
-        constraints.setMargin(R.id.finish_destination, ConstraintSet.TOP, dp(4));
-        constraints.setGoneMargin(R.id.board_container, ConstraintSet.BOTTOM, 0);
-        constraints.applyTo((ConstraintLayout) root);
-        btnToggleControls.setBackgroundResource(landscape
-                ? R.drawable.shape_drawer_tab_right : R.drawable.shape_drawer_tab_bottom);
+        screenLayout.applyBoardPanelConstraints(root);
     }
 
     private void clearPanelTabConstraints(ConstraintSet constraints, int viewId) {
-        int[] anchors = {
-                ConstraintSet.LEFT,
-                ConstraintSet.RIGHT,
-                ConstraintSet.START,
-                ConstraintSet.END,
-                ConstraintSet.TOP,
-                ConstraintSet.BOTTOM
-        };
-        for (int anchor : anchors) {
-            constraints.clear(viewId, anchor);
-        }
+        screenLayout.clearPanelTabConstraints(constraints, viewId);
     }
 
     private void centerTabHorizontally(ConstraintSet constraints, int viewId) {
-        constraints.connect(viewId, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START);
-        constraints.connect(viewId, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
+        screenLayout.centerTabHorizontally(constraints, viewId);
     }
 
     private void centerTabVertically(ConstraintSet constraints, int viewId) {
-        constraints.connect(viewId, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);
-        constraints.connect(viewId, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
+        screenLayout.centerTabVertically(constraints, viewId);
     }
 
     private void refreshBoardAfterPanelLayout() {
@@ -2480,121 +1615,33 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateDrawerTabLabel(TextView tab, String text) {
-        tab.setText(text);
+        screenLayout.updateDrawerTabLabel(tab, text);
     }
     private boolean usesCompactWaitingTray() {
-        Configuration configuration = getResources().getConfiguration();
-        int smallestWidth = configuration.smallestScreenWidthDp;
-        if (smallestWidth > 0) {
-            return smallestWidth < 600;
-        }
-        return Math.min(configuration.screenWidthDp, configuration.screenHeightDp) < 600;
+        return screenLayout.usesCompactWaitingTray();
     }
 
     private boolean isCompactPortrait() {
-        Configuration configuration = getResources().getConfiguration();
-        return configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-                && configuration.screenWidthDp > 0
-                && configuration.screenWidthDp < 600;
+        return screenLayout.isCompactPortrait();
     }
     private void applyResponsiveSizing() {
-        if (usesLandscapeControls() && !usesCompactWaitingTray()) {
-            setViewWidthIfPresent(R.id.top_panel, 216);
-        }
-        if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE
-                && usesCompactWaitingTray()) {
-            setViewWidthIfPresent(R.id.top_panel, 144);
-            topPanel.setPadding(dp(6), dp(8), dp(6), dp(8));
-            setViewWidthIfPresent(R.id.control_panel, 292);
-            ((TextView) findViewById(R.id.text_title)).setTextSize(14);
-            textStatus.setMaxLines(3);
-            textStatus.setTextSize(12);
-        }
-        if (!isCompactPortrait()) {
-            return;
-        }
-
-        View root = findViewById(R.id.root_layout);
-        root.setPadding(dp(8), dp(8), dp(8), dp(8));
-        topPanel.setPadding(dp(10), dp(6), dp(10), dp(6));
-        controlPanel.setPadding(dp(8), dp(6), dp(8), dp(7));
-        setViewWidthIfPresent(R.id.action_log_rail, 48);
-
-        TextView title = findViewById(R.id.text_title);
-        title.setTextSize(18);
-        textStatus.setMinHeight(dp(36));
-        textStatus.setTextSize(14);
-        textStatus.setPadding(dp(12), dp(4), dp(12), dp(4));
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                textStatus,
-                11, 14, 1,
-                TypedValue.COMPLEX_UNIT_SP);
-        setViewHeightIfPresent(R.id.text_status, 52);
-        textTimer.setTextSize(18);
-
-        boolean largeText = getResources().getConfiguration().fontScale >= 1.2f;
-        setViewHeightIfPresent(R.id.turn_tools, 44);
-        setViewHeightIfPresent(R.id.results_row, 44);
-        setViewHeightIfPresent(R.id.yut_row_top, largeText ? 52 : 48);
-        setViewHeightIfPresent(R.id.yut_row_bottom, largeText ? 52 : 48);
+        screenLayout.applyResponsiveSizing();
     }
 
     private void applyCompactActionAutoSizing() {
-        int[] buttonIds = {
-                R.id.btn_time_stop,
-                R.id.btn_end_turn,
-                R.id.btn_undo_roll
-        };
-        for (int id : buttonIds) {
-            TextView button = findViewById(id);
-            if (button == null) {
-                continue;
-            }
-            button.setMaxLines(1);
-            button.setHorizontallyScrolling(false);
-            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
-                    button,
-                    8, 13, 1,
-                    TypedValue.COMPLEX_UNIT_SP);
-        }
+        screenLayout.applyCompactActionAutoSizing();
     }
 
     private void applyFontScaleSizing() {
-        float fontScale = getResources().getConfiguration().fontScale;
-        if (fontScale < 1.3f) {
-            return;
-        }
-
-        boolean extraLarge = fontScale >= 1.7f;
-        int rulesHeight = extraLarge ? 92 : 76;
-        int teamButtonHeight = extraLarge ? 92 : 78;
-        int utilityHeight = extraLarge ? 54 : 48;
-        setViewHeightIfPresent(R.id.btn_setup_rules, rulesHeight);
-        setViewHeightIfPresent(R.id.btn_team_2, teamButtonHeight);
-        setViewHeightIfPresent(R.id.btn_team_3, teamButtonHeight);
-        setViewHeightIfPresent(R.id.btn_team_4, teamButtonHeight);
-        setViewHeightIfPresent(R.id.btn_setup_help, utilityHeight);
-        setViewHeightIfPresent(R.id.btn_setup_version, utilityHeight);
+        screenLayout.applyFontScaleSizing();
     }
 
     private void setViewHeightIfPresent(int viewId, int heightDp) {
-        View view = findViewById(viewId);
-        if (view == null) {
-            return;
-        }
-        ViewGroup.LayoutParams params = view.getLayoutParams();
-        params.height = dp(heightDp);
-        view.setLayoutParams(params);
+        screenLayout.setViewHeightIfPresent(viewId, heightDp);
     }
 
     private void setViewWidthIfPresent(int viewId, int widthDp) {
-        View view = findViewById(viewId);
-        if (view == null) {
-            return;
-        }
-        ViewGroup.LayoutParams params = view.getLayoutParams();
-        params.width = dp(widthDp);
-        view.setLayoutParams(params);
+        screenLayout.setViewWidthIfPresent(viewId, widthDp);
     }
     private String teamName(int teamId) {
         return game.getLocalizedTeamName(teamId);
@@ -2636,51 +1683,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindSafeAreaInsets() {
-        View root = findViewById(R.id.root_layout);
-        int baseLeft = root.getPaddingLeft();
-        int baseTop = root.getPaddingTop();
-        int baseRight = root.getPaddingRight();
-        int baseBottom = root.getPaddingBottom();
-        int panelTop = topPanel.getPaddingTop();
-        int panelBottom = topPanel.getPaddingBottom();
-
-        ViewCompat.setOnApplyWindowInsetsListener(root, (view, windowInsets) -> {
-            Insets cutout = windowInsets.getInsets(WindowInsetsCompat.Type.displayCutout());
-            Insets interactionInsets = windowInsets.getInsets(
-                    WindowInsetsCompat.Type.mandatorySystemGestures()
-                            | WindowInsetsCompat.Type.navigationBars());
-            int safeLeft = Math.max(cutout.left, interactionInsets.left);
-            boolean landscape = usesLandscapeControls();
-            // The board may use gesture space; interactive controls must remain outside it.
-            int gestureTop = landscape ? Math.min(interactionInsets.top, dp(4)) : interactionInsets.top;
-            int gestureBottom = landscape ? Math.min(interactionInsets.bottom, dp(4)) : interactionInsets.bottom;
-            int safeTop = Math.max(cutout.top, gestureTop);
-            int safeRight = Math.max(cutout.right, interactionInsets.right);
-            int safeBottom = Math.max(cutout.bottom, gestureBottom);
-            if (landscape) {
-                int extraTop = Math.max(0, interactionInsets.top - safeTop - baseTop);
-                int extraBottom = Math.max(0, interactionInsets.bottom - safeBottom - baseBottom);
-                topPanel.setPadding(topPanel.getPaddingLeft(), panelTop + extraTop,
-                        topPanel.getPaddingRight(), panelBottom + extraBottom);
-                unlimitedFooter.setPadding(dp(4), 0, dp(4), dp(6) + extraBottom);
-                for (View column : new View[]{unlimitedRolls, unlimitedWaiting, landscapeResults}) {
-                    column.setPadding(column.getPaddingLeft(), extraTop, column.getPaddingRight(), 0);
-                }
-            }
-            int left = baseLeft + safeLeft;
-            int top = baseTop + safeTop;
-            int right = baseRight + safeRight;
-            int bottom = baseBottom + safeBottom;
-            if (view.getPaddingLeft() != left
-                    || view.getPaddingTop() != top
-                    || view.getPaddingRight() != right
-                    || view.getPaddingBottom() != bottom) {
-                view.setPadding(left, top, right, bottom);
-                scheduleBoardLayoutRefresh();
-            }
-            return windowInsets;
-        });
-        ViewCompat.requestApplyInsets(root);
+        screenLayout.bindSafeAreaInsets();
     }
 
     private void enterImmersiveMode() {
@@ -2730,26 +1733,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bounceArrivedPieces(int teamId, List<Integer> pieceIds, Runnable onComplete) {
-        if (pieceIds.isEmpty()) {
-            onComplete.run();
-            return;
-        }
-
-        for (int i = 0; i < pieceIds.size(); i++) {
-            PieceStackView pieceView = pieceViews[teamId][pieceIds.get(i)];
-            boolean last = i == pieceIds.size() - 1;
-            pieceView.animate()
-                    .scaleX(1.08f)
-                    .scaleY(1.08f)
-                    .setDuration(75)
-                    .withEndAction(() -> pieceView.animate()
-                            .scaleX(1f)
-                            .scaleY(1f)
-                            .setDuration(100)
-                            .withEndAction(last ? onComplete : null)
-                            .start())
-                    .start();
-        }
+        boardPresentation.bounceArrivedPieces(teamId, pieceIds, onComplete);
     }
 
     private void updateRollInputAvailability() {
@@ -2825,29 +1809,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void removeAllPiecesFromScreen() {
-        if (pieceViews == null) {
-            return;
-        }
-
-        for (int team = 0; team < YutGameEngine.MAX_TEAM_COUNT; team++) {
-            for (int id = 0; id < YutGameEngine.PIECE_COUNT; id++) {
-                removeFromParent(pieceViews[team][id]);
-            }
-        }
+        boardPresentation.removeAllPiecesFromScreen();
     }
 
     private void resetPieceViewTransform(View view) {
-        view.animate().cancel();
-        view.setX(0f);
-        view.setY(0f);
-        view.setTranslationX(0f);
-        view.setTranslationY(0f);
-        view.setScaleX(1f);
-        view.setScaleY(1f);
-        view.setAlpha(1f);
-        if (view instanceof PieceStackView) {
-            ((PieceStackView) view).setCollapseProgress(0f);
-        }
+        boardPresentation.resetPieceViewTransform(view);
     }
 
     private void addTurnLog(String message) {
@@ -2935,7 +1901,7 @@ public class MainActivity extends AppCompatActivity {
     private void loadSettings() {
         GameStateStore.Settings settings = stateStore.loadSettings();
         turnDurationMillis = settings.turnDurationMillis;
-        remainingTurnMillis = turnDurationMillis;
+        turnClock.remainingTurnMillis = turnDurationMillis;
         feedback.setEnabled(settings.soundEnabled, settings.vibrationEnabled);
         captureBonusStacks = settings.captureBonusStacks;
         reducedMotion = settings.reducedMotion;
@@ -3028,15 +1994,12 @@ public class MainActivity extends AppCompatActivity {
 
     private void beginTimerDialogHold() {
         syncTimerToNow();
-        timerDialogHoldCount++;
+        turnClock.beginDialogHold();
         updateTimerView();
     }
 
     private void endTimerDialogHold() {
-        if (timerDialogHoldCount > 0) {
-            timerDialogHoldCount--;
-        }
-        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        turnClock.endDialogHold(SystemClock.elapsedRealtime());
         updateTimerView();
         persistGameState();
         maybeShowPendingUpdate();
@@ -3044,7 +2007,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void applySettings(long selectedTurnDurationMillis, boolean soundEnabled, boolean vibrationEnabled) {
         boolean durationChanged = turnDurationMillis != selectedTurnDurationMillis;
-        boolean keepPaused = isTimerPaused;
+        boolean keepPaused = turnClock.isTimerPaused;
         turnDurationMillis = selectedTurnDurationMillis;
         feedback.setEnabled(soundEnabled, vibrationEnabled);
 
@@ -3054,13 +2017,13 @@ public class MainActivity extends AppCompatActivity {
             moveUndoState = null;
             updateUndoActionAvailability();
             if (gameStarted && setupPanel.getVisibility() != View.VISIBLE && !game.isGameOver()) {
-                remainingTurnMillis = turnDurationMillis;
+                turnClock.remainingTurnMillis = turnDurationMillis;
                 timeExpiredNotified = false;
-                isTimerPaused = keepPaused;
-                timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+                turnClock.isTimerPaused = keepPaused;
+                turnClock.timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
                 updateTimerView();
             } else {
-                remainingTurnMillis = turnDurationMillis;
+                turnClock.remainingTurnMillis = turnDurationMillis;
                 updateTimerView();
             }
         } else {
@@ -3115,13 +2078,15 @@ public class MainActivity extends AppCompatActivity {
         gameStarted = appState.gameStarted;
         restoredGameSavedAtEpochMillis = appState.savedAtEpochMillis;
         game.restoreState(appState.engineState);
+        matchStatistics.restore(appState.statistics);
+        victoryCreditsSeen = appState.victoryCreditsSeen;
         teamColors = TeamAppearance.restoreColors(appState.teamColors, game.getTeamCount());
         teamShapes = TeamAppearance.restoreShapes(appState.teamShapes);
         applyTeamAppearance();
-        remainingTurnMillis = turnDurationMillis <= 0L ? 0L : Math.max(0L, appState.remainingTurnMillis);
-        isTimerPaused = appState.timerPaused;
+        turnClock.remainingTurnMillis = turnDurationMillis <= 0L ? 0L : Math.max(0L, appState.remainingTurnMillis);
+        turnClock.isTimerPaused = appState.timerPaused;
         timeExpiredNotified = appState.timeExpiredNotified;
-        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        turnClock.timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         selectedPreviewTeamId = appState.selectedTeamId;
         selectedPreviewPieceId = appState.selectedPieceId;
         if (!isValidPreviewSelection(selectedPreviewTeamId, selectedPreviewPieceId)) {
@@ -3161,12 +2126,14 @@ public class MainActivity extends AppCompatActivity {
         GameStateStore.AppState appState = new GameStateStore.AppState();
         appState.gameStarted = gameStarted;
         appState.victoryPending = victoryPending;
+        appState.statistics = matchStatistics.snapshot();
+        appState.victoryCreditsSeen = victoryCreditsSeen;
         appState.bonusTimeBaselineResultId = bonusTimeBaselineResultId;
         appState.savedAtEpochMillis = restoredGameSavedAtEpochMillis;
         appState.preserveSavedAtEpochMillis = savedGameChoicePending;
-        appState.remainingTurnMillis = remainingTurnMillis;
+        appState.remainingTurnMillis = turnClock.remainingTurnMillis;
         appState.timerCheckpointEpochMillis = System.currentTimeMillis();
-        appState.timerPaused = isTimerPaused;
+        appState.timerPaused = turnClock.isTimerPaused;
         appState.timeExpiredNotified = timeExpiredNotified;
         appState.selectedTeamId = selectedPreviewTeamId;
         appState.selectedPieceId = selectedPreviewPieceId;
@@ -3270,13 +2237,13 @@ public class MainActivity extends AppCompatActivity {
         if (!gameStarted
                 || turnDurationMillis <= 0L
                 || game.isGameOver()
-                || isTimerHeldForAnimation
-                || timerDialogHoldCount > 0) {
+                || turnClock.isTimerHeldForAnimation
+                || turnClock.timerDialogHoldCount > 0) {
             return false;
         }
 
         syncTimerToNow();
-        if (remainingTurnMillis > 0L) {
+        if (turnClock.remainingTurnMillis > 0L) {
             return false;
         }
 
@@ -3288,10 +2255,10 @@ public class MainActivity extends AppCompatActivity {
     private void finishTurnAfterTimeout() {
         if (!gameStarted
                 || turnDurationMillis <= 0L
-                || remainingTurnMillis > 0L
+                || turnClock.remainingTurnMillis > 0L
                 || game.isGameOver()
-                || isTimerHeldForAnimation
-                || timerDialogHoldCount > 0) {
+                || turnClock.isTimerHeldForAnimation
+                || turnClock.timerDialogHoldCount > 0) {
             return;
         }
 
@@ -3317,11 +2284,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startTurnTimer() {
-        isTimerHeldForAnimation = false;
-        remainingTurnMillis = turnDurationMillis;
-        isTimerPaused = false;
+        turnClock.restart(turnDurationMillis, SystemClock.elapsedRealtime());
         timeExpiredNotified = false;
-        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         updateTimerView();
     }
 
@@ -3330,14 +2294,14 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         syncTimerToNow();
-        remainingTurnMillis += BONUS_TURN_MILLIS;
+        turnClock.remainingTurnMillis += BONUS_TURN_MILLIS;
         timeExpiredNotified = false;
         updateTimerView();
     }
 
     private void pauseTimer() {
         syncTimerToNow();
-        isTimerPaused = true;
+        turnClock.isTimerPaused = true;
         updateTimerView();
     }
 
@@ -3346,34 +2310,20 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         syncTimerToNow();
-        isTimerPaused = !isTimerPaused;
-        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        turnClock.isTimerPaused = !turnClock.isTimerPaused;
+        turnClock.timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         updateTimerView();
         playFeedback(GameFeedback.TAP);
         persistGameState();
     }
 
     private boolean shouldTimerRun() {
-        return isActivityResumed && gameStarted
-                && !isTimerPaused
-                && !isTimerHeldForAnimation
-                && timerDialogHoldCount == 0
-                && turnDurationMillis > 0L
-                && !game.isGameOver();
+        return turnClock.shouldRun(isActivityResumed && gameStarted
+                && turnDurationMillis > 0L && !game.isGameOver());
     }
 
     private void syncTimerToNow() {
-        long now = SystemClock.elapsedRealtime();
-        if (timerCheckpointElapsedMillis <= 0L) {
-            timerCheckpointElapsedMillis = now;
-            return;
-        }
-
-        if (shouldTimerRun()) {
-            long elapsed = Math.max(0L, now - timerCheckpointElapsedMillis);
-            remainingTurnMillis = Math.max(0L, remainingTurnMillis - elapsed);
-        }
-        timerCheckpointElapsedMillis = now;
+        turnClock.sync(SystemClock.elapsedRealtime(), shouldTimerRun());
     }
 
     private void updateTimerView() {
@@ -3392,13 +2342,13 @@ public class MainActivity extends AppCompatActivity {
         }
         btnTimeStop.setEnabled(true);
 
-        long seconds = (remainingTurnMillis + TIMER_TICK_MILLIS - 1L) / TIMER_TICK_MILLIS;
+        long seconds = (turnClock.remainingTurnMillis + TIMER_TICK_MILLIS - 1L) / TIMER_TICK_MILLIS;
         long minutes = seconds / 60;
         long displaySeconds = seconds % 60;
         String timeText = String.format(Locale.ROOT, "%02d:%02d", minutes, displaySeconds);
         textTimer.setText(timeText);
 
-        if (isTimerPaused) {
+        if (turnClock.isTimerPaused) {
             if (usesLandscapeControls()) {
                 textTimer.setText(timeText + "\n" + getString(R.string.timer_stopped_label));
             }
@@ -3408,7 +2358,7 @@ public class MainActivity extends AppCompatActivity {
             btnTimeStop.setTextColor(getResources().getColor(R.color.ink_black));
             btnTimeStop.setBackgroundResource(R.drawable.shape_button_pause_active);
             btnTimeStop.setBackgroundTintList(null);
-        } else if (timerDialogHoldCount > 0) {
+        } else if (turnClock.timerDialogHoldCount > 0) {
             textTimer.setTextColor(getResources().getColor(R.color.button_end_pressed));
             textTimer.setContentDescription(getString(R.string.timer_settings_description, timeText));
             btnTimeStop.setText(R.string.pause_time);
@@ -3416,9 +2366,9 @@ public class MainActivity extends AppCompatActivity {
             btnTimeStop.setBackgroundResource(R.drawable.shape_button_utility);
             btnTimeStop.setBackgroundTintList(null);
         } else {
-            int timerColor = remainingTurnMillis <= 10_000L
+            int timerColor = turnClock.remainingTurnMillis <= 10_000L
                     ? R.color.timer_urgent
-                    : remainingTurnMillis <= 30_000L
+                    : turnClock.remainingTurnMillis <= 30_000L
                             ? R.color.timer_warning
                             : R.color.text_primary;
             textTimer.setTextColor(getResources().getColor(timerColor));
@@ -3430,7 +2380,7 @@ public class MainActivity extends AppCompatActivity {
 
     // Layout is selected by orientation; the timer setting only changes game rules.
     private boolean usesLandscapeControls() {
-        return getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        return screenLayout.usesLandscapeControls();
     }
 
     private void recordReversePaths(GameStateStore.MoveUndoState state, YutGameEngine.MoveResult result) {
@@ -3449,105 +2399,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private float[] undoPoint(int node, int pieceId, ViewGroup root) {
-        int[] base = new int[2]; int[] origin = new int[2];
-        root.getLocationOnScreen(origin);
-        if (node == BoardPath.START_NODE) {
-            View spot = waitSpots[game.getCurrentTeam()][pieceId];
-            if (spot == null) spot = waitingArea;
-            spot.getLocationOnScreen(base);
-            return new float[]{base[0] - origin[0] + spot.getWidth() / 2f,
-                    base[1] - origin[1] + spot.getHeight() / 2f};
-        }
-        boardOverlay.getLocationOnScreen(base);
-        float[] position = getBoardNodePosition(node == BoardPath.END_NODE ? 15 : node, 0);
-        return new float[]{base[0] - origin[0] + position[0],
-                base[1] - origin[1] + position[1] + (node == BoardPath.END_NODE ? dp(32) : 0)};
+        return boardPresentation.undoPoint(node, pieceId, root);
     }
 
     private void animateUndo(YutGameEngine.SavedState before, GameStateStore.MoveUndoState state) {
         undoAnimating = true;
         isAnimatingMove = true;
-        isTimerHeldForAnimation = true;
+        turnClock.isTimerHeldForAnimation = true;
         setControlsEnabled(false);
-        clearMovePreviews();
-        int generation = layoutGeneration;
-        ViewGroup root = findViewById(R.id.root_layout);
-        root.post(() -> {
-            if (generation != layoutGeneration || !undoAnimating) return;
-            ArrayList<ArrayList<float[]>> paths = new ArrayList<>();
-            ArrayList<PieceStackView> ghosts = new ArrayList<>();
-            ArrayList<PieceStackView> hidden = new ArrayList<>();
-            int longest = 1;
-            int size = getBoardPieceViewSize();
-            for (int p = 0; p < 16; p++) {
-                if (before.piecePositions[p] == state.engineState.piecePositions[p]
-                        && before.pieceFinished[p] == state.engineState.pieceFinished[p]) continue;
-                int team = p / 4, id = p % 4;
-                ArrayList<float[]> points = new ArrayList<>();
-                points.add(undoPoint(before.piecePositions[p], id, root));
-                int[] recorded = state.reversePaths == null ? null : state.reversePaths[p];
-                if (recorded != null) for (int node : recorded) {
-                    float[] point = undoPoint(node, id, root);
-                    float[] last = points.get(points.size() - 1);
-                    if (Math.hypot(last[0] - point[0], last[1] - point[1]) > 1f) points.add(point);
-                }
-                float[] destination = undoPoint(state.engineState.piecePositions[p], id, root);
-                float[] last = points.get(points.size() - 1);
-                if (Math.hypot(last[0] - destination[0], last[1] - destination[1]) > 1f) points.add(destination);
-                if (points.size() < 2) continue;
-                PieceStackView ghost = new PieceStackView(this);
-                ghost.configureAppearance(teamColors[team], teamShapes[team], id + 1);
-                ghost.setVisualDiameterPx(getBoardPieceSize());
-                ghost.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-                ghost.measure(View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY),
-                        View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY));
-                ghost.layout(0, 0, size, size);
-                ghost.setX(points.get(0)[0] - size / 2f); ghost.setY(points.get(0)[1] - size / 2f);
-                root.getOverlay().add(ghost);
-                undoGhosts.add(ghost); ghosts.add(ghost); paths.add(points);
-                PieceStackView actual = pieceViews[team][id];
-                actual.animate().cancel(); actual.setAlpha(0f); hidden.add(actual);
-                longest = Math.max(longest, points.size() - 1);
-            }
-            if (ghosts.isEmpty()) { finishUndoAnimation(); return; }
-            ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-            moveAnimators.add(animator);
-            // Apply the same per-node timing as forward travel, divided by 1.75.
-            long forwardDuration = 0L;
-            for (int i = 0; i < longest; i++) forwardDuration += Math.max(110, 190 - Math.min(i, 4) * 12);
-            animator.setDuration(Math.max(90L, Math.round(forwardDuration / 1.75f)));
-            animator.setInterpolator(new android.view.animation.LinearInterpolator());
-            animator.addUpdateListener(value -> {
-                float fraction = (float) value.getAnimatedValue();
-                for (int i = 0; i < ghosts.size(); i++) {
-                    ArrayList<float[]> points = paths.get(i);
-                    float step = fraction * (points.size() - 1);
-                    int index = Math.min(points.size() - 2, (int) step);
-                    float progress = step - index;
-                    float[] a = points.get(index), b = points.get(index + 1);
-                    ghosts.get(i).setX(a[0] + (b[0] - a[0]) * progress - size / 2f);
-                    ghosts.get(i).setY(a[1] + (b[1] - a[1]) * progress - size / 2f);
-                }
-            });
-            animator.addListener(new AnimatorListenerAdapter() {
-                private boolean cancelled;
-                @Override public void onAnimationCancel(Animator animation) { cancelled = true; }
-                @Override public void onAnimationEnd(Animator animation) {
-                    moveAnimators.remove(animator);
-                    for (View ghost : ghosts) { root.getOverlay().remove(ghost); undoGhosts.remove(ghost); }
-                    for (View actual : hidden) actual.setAlpha(1f);
-                    if (!cancelled && generation == layoutGeneration) finishUndoAnimation();
-                }
-            });
-            animator.start();
-        });
+        boardPresentation.animateUndo(before, state);
     }
 
     private void finishUndoAnimation() {
         undoAnimating = false;
         isAnimatingMove = false;
-        isTimerHeldForAnimation = false;
-        timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
+        turnClock.isTimerHeldForAnimation = false;
+        turnClock.timerCheckpointElapsedMillis = SystemClock.elapsedRealtime();
         renderBoardPiecesNow();
         setControlsEnabled(true);
         updatePieceSelectionStyles();
@@ -3564,202 +2431,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void createUnlimitedControls() {
-        unlimitedControlsAttached = false;
-        ConstraintLayout root = findViewById(R.id.root_layout);
-        View surface = new View(this);
-        surface.setId(R.id.landscape_control_surface);
-        surface.setBackgroundResource(R.drawable.shape_panel);
-        surface.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        surface.setVisibility(View.GONE);
-        root.addView(surface, new ConstraintLayout.LayoutParams(0, 0));
-        unlimitedRolls = createLandscapeColumn(root, R.id.unlimited_rolls, 128);
-        unlimitedFooter = createLandscapeColumn(root, R.id.unlimited_footer, 0);
-        unlimitedFooter.setLayoutParams(new ConstraintLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT));
-        unlimitedFooter.setPadding(dp(4), 0, dp(4), dp(6));
-        unlimitedWaiting = createLandscapeColumn(root, R.id.unlimited_waiting, 48);
-        landscapeResults = createLandscapeColumn(root, R.id.landscape_results, 60);
-        rollHint = new TextView(this);
-        rollHint.setTag("roll_hint");
-        rollHint.setTextColor(getResources().getColor(R.color.text_primary));
-        rollHint.setGravity(Gravity.CENTER);
-        rollHint.setTextSize(12);
-        rollHint.setMaxLines(2);
-        rollHint.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-        findViewById(R.id.btn_bdo).setBackgroundResource(R.drawable.shape_button_backdo);
+        screenLayout.createUnlimitedControls();
     }
 
     private LinearLayout createLandscapeColumn(ConstraintLayout root, int id, int widthDp) {
-        LinearLayout column = new LinearLayout(this);
-        column.setId(id);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.setVisibility(View.GONE);
-        root.addView(column, new ConstraintLayout.LayoutParams(dp(widthDp), 0));
-        return column;
+        return screenLayout.createLandscapeColumn(root, id, widthDp);
     }
 
     private void addColumnTitle(LinearLayout column, int text) {
-        TextView title = new TextView(this);
-        title.setText(text);
-        title.setTextColor(getResources().getColor(R.color.text_primary));
-        title.setTextSize(12);
-        title.setGravity(Gravity.CENTER);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        column.addView(title, new LinearLayout.LayoutParams(-1, dp(32)));
+        screenLayout.addColumnTitle(column, text);
     }
 
     private int landscapeSpacing() {
-        int height = getResources().getConfiguration().screenHeightDp;
-        return height <= 320 ? 3 : height >= 400 ? 8 : 6;
+        return screenLayout.landscapeSpacing();
     }
 
     private boolean usesVerticalWaitingTray() {
-        return usesLandscapeControls();
+        return screenLayout.usesVerticalWaitingTray();
     }
 
     private void updateUnlimitedControls(boolean landscape) {
-        boolean attachedNow = landscape && !unlimitedControlsAttached;
-        if (attachedNow) {
-            // Configuration changes reinflate the regular XML before attaching these columns.
-            unlimitedControlsAttached = true;
-            LinearLayout overview = findViewById(R.id.waiting_overview);
-            removeFromParent(overview);
-            overview.setOrientation(LinearLayout.VERTICAL);
-            unlimitedWaiting.addView(overview, new LinearLayout.LayoutParams(-1, -1));
-            waitingArea.setLayoutParams(new LinearLayout.LayoutParams(-1, -1));
-
-            // Results get their own vertical scroll area. The old horizontal viewport stays
-            // in the footer, hidden, so portrait XML remains unchanged.
-            View horizontalResults = (View) resultLayout.getParent();
-            horizontalResults.setVisibility(View.GONE);
-            removeFromParent(resultLayout);
-            resultLayout.setOrientation(LinearLayout.VERTICAL);
-            resultLayout.setGravity(Gravity.TOP);
-            addColumnTitle(landscapeResults, R.string.pending_results_title);
-            android.widget.ScrollView scroll = new android.widget.ScrollView(this);
-            scroll.setFillViewport(true);
-            scroll.setClipToPadding(false);
-            scroll.setPadding(dp(2), 0, dp(2), 0);
-            scroll.addView(resultLayout, new FrameLayout.LayoutParams(-1, -2));
-            landscapeResults.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-            textStatus.setVisibility(View.GONE);
-            TextView heading = findViewById(R.id.text_title);
-            heading.setVisibility(View.VISIBLE);
-            heading.setText(getString(R.string.current_turn_heading, teamName(game.getCurrentTeam())));
-            heading.setTextColor(getTeamColor(game.getCurrentTeam()));
-            heading.setMaxLines(2);
-            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(heading, 12, 16, 1, TypedValue.COMPLEX_UNIT_SP);
-            LinearLayout tools = findViewById(R.id.turn_tools);
-            removeFromParent(tools);
-            tools.setOrientation(LinearLayout.HORIZONTAL);
-            tools.setGravity(Gravity.CENTER_VERTICAL);
-            LinearLayout.LayoutParams toolsParams = new LinearLayout.LayoutParams(-1, dp(56));
-            toolsParams.topMargin = dp(landscapeSpacing());
-            ((LinearLayout) topPanel).addView(tools, 1, toolsParams);
-            textTimer.setLayoutParams(new LinearLayout.LayoutParams(0, -1, 1f));
-            textTimer.setMaxLines(2);
-            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(textTimer, 12, 24, 1, TypedValue.COMPLEX_UNIT_SP);
-            LinearLayout.LayoutParams pauseParams = new LinearLayout.LayoutParams(dp(56), -1);
-            pauseParams.leftMargin = dp(4);
-            btnTimeStop.setLayoutParams(pauseParams);
-            btnTimeStop.setMaxLines(2);
-            TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(btnTimeStop, 10, 12, 1, TypedValue.COMPLEX_UNIT_SP);
-            for (int id : new int[]{R.id.results_row}) {
-                View row = findViewById(id);
-                removeFromParent(row);
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, dp(48));
-                params.topMargin = dp(landscapeSpacing());
-                unlimitedFooter.addView(row, params);
-            }
-            LinearLayout actions = findViewById(R.id.results_row);
-            removeFromParent(actionLogRail);
-            actions.addView(actionLogRail, new LinearLayout.LayoutParams(dp(44), dp(44)));
-            View undo = findViewById(R.id.btn_undo_roll);
-            LinearLayout.LayoutParams undoParams = new LinearLayout.LayoutParams(0, dp(44), 1f);
-            undoParams.setMargins(dp(2), 0, dp(2), 0);
-            undo.setLayoutParams(undoParams);
-
-            addColumnTitle(unlimitedRolls, R.string.roll_controls);
-            removeFromParent(rollHint);
-            unlimitedRolls.addView(rollHint, new LinearLayout.LayoutParams(-1, dp(32)));
-            int[] buttons = {R.id.btn_do, R.id.btn_yut, R.id.btn_gae, R.id.btn_mo, R.id.btn_geol, R.id.btn_bdo};
-            LinearLayout row = null;
-            for (int i = 0; i < buttons.length; i++) {
-                if (i % 2 == 0) {
-                    row = new LinearLayout(this);
-                    unlimitedRolls.addView(row, new LinearLayout.LayoutParams(-1, 0, 1f));
-                }
-                View button = findViewById(buttons[i]);
-                removeFromParent(button);
-                button.setPadding(dp(2), dp(3), dp(2), dp(3));
-                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, 1f);
-                params.setMargins(dp(2), dp(landscapeSpacing()), dp(2), dp(landscapeSpacing()));
-                row.addView(button, params);
-            }
-            updateResultButtons();
-            if (gameStarted) rebuildCurrentWaitingArea();
-        }
-        int visible = landscape && gameStarted ? View.VISIBLE : View.GONE;
-        unlimitedRolls.setVisibility(visible);
-        unlimitedFooter.setVisibility(visible);
-        unlimitedWaiting.setVisibility(visible);
-        landscapeResults.setVisibility(visible);
-        findViewById(R.id.landscape_control_surface).setVisibility(visible);
-        if (gameStarted) {
-            controlPanel.setVisibility(!landscape && controlsPanelOpen ? View.VISIBLE : View.GONE);
-            btnToggleControls.setVisibility(landscape ? View.GONE : View.VISIBLE);
-            if (attachedNow) scheduleBoardLayoutRefresh();
-        }
+        screenLayout.updateUnlimitedControls(landscape);
     }
 
     private void applyUnlimitedBoardConstraints(ConstraintLayout root) {
-        ConstraintSet constraints = new ConstraintSet();
-        constraints.clone(root);
-        for (int id : new int[]{R.id.board_container, R.id.finish_destination, R.id.unlimited_rolls,
-                R.id.unlimited_footer, R.id.unlimited_waiting, R.id.landscape_results,
-                R.id.landscape_control_surface}) {
-            clearPanelTabConstraints(constraints, id);
-        }
-        constraints.setVisibility(R.id.control_panel, View.GONE);
-        constraints.setVisibility(R.id.btn_toggle_controls, View.GONE);
-        constraints.setVisibility(R.id.btn_toggle_info, View.GONE);
-        constraints.setVisibility(R.id.top_panel, View.VISIBLE);
-        for (int id : new int[]{R.id.unlimited_rolls, R.id.unlimited_footer,
-                R.id.unlimited_waiting, R.id.landscape_results, R.id.landscape_control_surface}) {
-            constraints.setVisibility(id, View.VISIBLE);
-        }
-        boolean compact = usesCompactWaitingTray();
-        int panelGap = dp(landscapeSpacing());
-        // Account for the frame's end inset without stealing width from the board.
-        constraints.constrainWidth(R.id.unlimited_rolls, dp(compact ? 110 : 146));
-        constraints.constrainWidth(R.id.unlimited_waiting, dp(compact ? 48 : 60));
-        constraints.constrainWidth(R.id.landscape_results, dp(compact ? 56 : 76));
-        constraints.connect(R.id.unlimited_rolls, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, dp(6));
-        constraints.connect(R.id.unlimited_waiting, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.START, dp(4));
-        constraints.connect(R.id.landscape_results, ConstraintSet.END, R.id.unlimited_waiting, ConstraintSet.START, dp(4));
-        for (int id : new int[]{R.id.unlimited_rolls, R.id.unlimited_waiting, R.id.landscape_results}) {
-            constraints.connect(id, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP, panelGap);
-            constraints.connect(id, ConstraintSet.BOTTOM, R.id.unlimited_footer, ConstraintSet.TOP, panelGap);
-        }
-        constraints.connect(R.id.unlimited_footer, ConstraintSet.START, R.id.landscape_results, ConstraintSet.START);
-        constraints.connect(R.id.unlimited_footer, ConstraintSet.END, R.id.unlimited_rolls, ConstraintSet.END);
-        constraints.connect(R.id.unlimited_footer, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
-        constraints.connect(R.id.landscape_control_surface, ConstraintSet.START, R.id.landscape_results, ConstraintSet.START);
-        constraints.setMargin(R.id.landscape_control_surface, ConstraintSet.START, -dp(4));
-        constraints.connect(R.id.landscape_control_surface, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
-        constraints.connect(R.id.landscape_control_surface, ConstraintSet.TOP, ConstraintSet.PARENT_ID, ConstraintSet.TOP);
-        constraints.connect(R.id.landscape_control_surface, ConstraintSet.BOTTOM, ConstraintSet.PARENT_ID, ConstraintSet.BOTTOM);
-
-        // The footer only occupies the controls' width, leaving the board the full screen height.
-        constraints.connect(R.id.board_container, ConstraintSet.START, R.id.top_panel, ConstraintSet.END, dp(4));
-        constraints.connect(R.id.board_container, ConstraintSet.END, R.id.landscape_results, ConstraintSet.START, dp(4));
-        constraints.createVerticalChain(ConstraintSet.PARENT_ID, ConstraintSet.TOP, ConstraintSet.PARENT_ID,
-                ConstraintSet.BOTTOM, new int[]{R.id.board_container, R.id.finish_destination},
-                null, ConstraintSet.CHAIN_PACKED);
-        constraints.connect(R.id.finish_destination, ConstraintSet.END, R.id.board_container, ConstraintSet.END);
-        constraints.setMargin(R.id.finish_destination, ConstraintSet.TOP, dp(4));
-        constraints.setGoneMargin(R.id.board_container, ConstraintSet.BOTTOM, 0);
-        constraints.applyTo(root);
+        screenLayout.applyUnlimitedBoardConstraints(root);
     }
 
     private void resizeLandscapeSummaryRows() {
@@ -3767,30 +2463,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateTimerLayout() {
-        updateRollHint();
-        boolean timed = turnDurationMillis > 0L;
-        boolean landscape = usesLandscapeControls();
-        LinearLayout tools = findViewById(R.id.turn_tools);
-        if (landscape) resizeLandscapeSummaryRows();
-        LinearLayout results = findViewById(R.id.results_row);
-        View endTurn = findViewById(R.id.btn_end_turn);
-        LinearLayout destination = landscape ? results : tools;
-        if (endTurn.getParent() != destination) {
-            removeFromParent(endTurn);
-            LinearLayout.LayoutParams params = landscape
-                    ? new LinearLayout.LayoutParams(0, dp(44), 1f)
-                    : new LinearLayout.LayoutParams(timedEndTurnParams);
-            destination.addView(endTurn, params);
-        }
-        tools.setVisibility(timed || !landscape ? View.VISIBLE : View.GONE);
-        textTimer.setVisibility(View.VISIBLE);
-        btnTimeStop.setVisibility(timed ? View.VISIBLE : View.GONE);
-        updateUnlimitedControls(landscape);
+        screenLayout.updateTimerLayout();
     }
 
     private void updateRollHint() {
-        if (rollHint == null) return;
-        rollHint.setText(game.getPendingResults().isEmpty() ? getString(R.string.roll_first)
+        screenLayout.setRollHint(game.getPendingResults().isEmpty() ? getString(R.string.roll_first)
                 : game.getNormalRollAllowance() > 0 ? getString(R.string.extra_rolls, game.getNormalRollAllowance())
                 : getString(R.string.select_results_hint));
         if (!usesLandscapeControls() && gameStarted && !game.getPendingResults().isEmpty()
@@ -3805,8 +2482,8 @@ public class MainActivity extends AppCompatActivity {
                 && setupPanel != null
                 && setupPanel.getVisibility() != View.VISIBLE
                 && !game.isGameOver()
-                && !isTimerPaused
-                && timerDialogHoldCount == 0;
+                && !turnClock.isTimerPaused
+                && turnClock.timerDialogHoldCount == 0;
         getWindow().getDecorView().setKeepScreenOn(keepOn);
     }
 
